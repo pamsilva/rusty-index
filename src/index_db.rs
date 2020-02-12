@@ -6,6 +6,7 @@ use rusqlite::{params, NO_PARAMS};
 
 #[derive(Debug)]
 pub struct IndexRecord {
+    pub id: u32,
     pub checksum: String,
     pub name: String,
     pub path: String,
@@ -17,7 +18,8 @@ pub fn create() -> Result<()> {
 
     conn.execute(
         "create table if not exists index_records (
-             checksum text primary key,
+             id integer primary key autoincrement,
+             checksum text not null,
              name text not null,
              path text             
          )",
@@ -47,16 +49,17 @@ pub fn select(name: String) -> Result<Vec<IndexRecord>> {
     let prepared_name = format!("%{}%", name);
 
     let mut stmt = conn.prepare(
-        "SELECT i.checksum, i.name, i.path
+        "SELECT i.id, i.checksum, i.name, i.path
          FROM index_records i
          WHERE i.name LIKE $1 ;"
     )?;
 
     let records = stmt.query_map(params![prepared_name], |row| {
         Ok(IndexRecord {
-            checksum: row.get(0)?,
-            name: row.get(1)?,
-            path: row.get(2)?,
+            id: row.get(0)?,
+            checksum: row.get(1)?,
+            name: row.get(2)?,
+            path: row.get(3)?,
         })
     })?;
 
@@ -64,3 +67,13 @@ pub fn select(name: String) -> Result<Vec<IndexRecord>> {
     Ok(res)
 }
 
+
+// #cfg[test()]
+// mod test {
+//     use supper::*;
+
+//     #[test]
+//     fn test_db_interaction() {
+        
+//     }
+// }
