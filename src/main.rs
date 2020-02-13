@@ -38,19 +38,7 @@ fn main() {
         Err(e) => println!("Error initialising database: {:?}", e),
     };
 
-    let dummy_record = index_db::IndexRecord {
-        id: 0,
-        checksum: String::from("alkfjopsdfpasdfusdf9908"),
-        name: String::from("Do Androids Dream of Electroinc Sheep?"),
-        path: String::from("/some/path/to/params/Do Androids Dream of Electroinc Sheep?"),
-    };
-
-    // let records = [dummy_record];
-    // match index_db::insert(&records) {
-    //     Ok(_) => println!("Record successfully inserted"),
-    //     Err(e) => println!("Error inserting record: {:?}", e),
-    // };
-
+    let mut records = Vec::<index_db::IndexRecord>::new();
     loop {
         let mut input = String::new();
 
@@ -62,13 +50,25 @@ fn main() {
             break;
         }
         
-        match hash_file(&input) {
-            Ok(file_hash) => println!("{}  {}", file_hash, input),
-            Err(e) => println!("Error processing file {} {}", input.as_str(), e),
-        }
+        let file_hash = hash_file(&input).unwrap();
+        println!("{:?} file has hash {:?}", input, file_hash);
+
+        let new_record = index_db::IndexRecord {
+            id: 0,
+            checksum: file_hash,
+            name: input.clone(),
+            path: input.clone(),
+        };
+
+        records.push(new_record);
      }
 
-    let res = index_db::select(String::from("Dream"));
+    match index_db::insert(&records) {
+        Ok(_) => println!("Record successfully inserted"),
+        Err(e) => println!("Error inserting record: {:?}", e),
+    };
+    
+    let res = index_db::select(String::from("Cargo"));
     match res {
         Ok(val) => println!("res: '{:?}'", val),
         Err(err) => println!("error parsing header: {:?}", err),

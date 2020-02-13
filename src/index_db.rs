@@ -30,7 +30,7 @@ pub fn create() -> Result<()> {
 }
 
 
-pub fn insert(arr: &[IndexRecord]) -> Result<()> {
+pub fn insert(arr: &Vec<IndexRecord>) -> Result<()> {
     let conn = Connection::open("index.db")?;
 
     for record in arr {
