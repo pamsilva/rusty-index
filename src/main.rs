@@ -1,14 +1,18 @@
-extern crate crypto;
-
-use crypto::digest::Digest;
-use crypto::sha3::Sha3;
-
 use std::env;
 use std::fs::File;
 use std::io::prelude::*;
 use std::io::{Result, stdin};
 
+
+extern crate crypto;
+
+use crypto::digest::Digest;
+use crypto::sha3::Sha3;
+
+
 mod index_db;
+
+use index_db::IndexStorage;
 
 
 const BUFFER_SIZE: usize = 1024;
@@ -47,11 +51,14 @@ fn get_name_and_path(pwd: &String, file_name: &String) -> (String, String){
 
 
 fn main() {
-    match index_db::create() {
+    let file_name = String::from("index.db");
+    let data_source = index_db::initalise_db(&file_name).unwrap();
+
+    match data_source.create() {
         Ok(_) => println!("Database initialised or verified"),
         Err(e) => println!("Error initialising database: {:?}", e),
     };
-
+    
     let current_dir = String::from(env::current_dir().unwrap().into_os_string().into_string().unwrap());
 
     let mut records = Vec::<index_db::IndexRecord>::new();
@@ -81,12 +88,12 @@ fn main() {
         records.push(new_record);
      }
 
-    match index_db::insert(&records) {
+    match data_source.insert(&records) {
         Ok(_) => println!("Record successfully inserted"),
         Err(e) => println!("Error inserting record: {:?}", e),
     };
     
-    let res = index_db::select(String::from("Cargo"));
+    let res = data_source.select(String::from("Cargo"));
     match res {
         Ok(val) => println!("res: '{:?}'", val),
         Err(err) => println!("error parsing header: {:?}", err),
