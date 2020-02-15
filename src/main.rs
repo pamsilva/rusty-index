@@ -3,6 +3,7 @@ extern crate crypto;
 use crypto::digest::Digest;
 use crypto::sha3::Sha3;
 
+use std::env;
 use std::fs::File;
 use std::io::prelude::*;
 use std::io::{Result, stdin};
@@ -31,12 +32,27 @@ fn hash_file(file_path: &String) -> Result<String> {
 }
 
 
+fn get_name_and_path(pwd: &String, file_name: &String) -> (String, String){
+    let mut relevant_file_name: String = file_name.clone();
+
+    if file_name.starts_with("./") {
+        let (_, new_file_name) = file_name.split_at(2);
+        relevant_file_name = String::from(new_file_name);
+    }
+    
+    let real_path = format!("{}/{}", pwd, relevant_file_name);
+    let components: Vec<&str> = real_path.rsplitn(2, '/').collect();
+    return (String::from(components[0]), String::from(components[1]));
+}
+
 
 fn main() {
     match index_db::create() {
         Ok(_) => println!("Database initialised or verified"),
         Err(e) => println!("Error initialising database: {:?}", e),
     };
+
+    let current_dir = String::from(env::current_dir().unwrap().into_os_string().into_string().unwrap());
 
     let mut records = Vec::<index_db::IndexRecord>::new();
     loop {
@@ -53,11 +69,13 @@ fn main() {
         let file_hash = hash_file(&input).unwrap();
         println!("{:?} file has hash {:?}", input, file_hash);
 
+        let (path, file_name) = get_name_and_path(&current_dir, &input);
+        
         let new_record = index_db::IndexRecord {
             id: 0,
             checksum: file_hash,
-            name: input.clone(),
-            path: input.clone(),
+            name: String::from(file_name),
+            path: String::from(path),
         };
 
         records.push(new_record);
