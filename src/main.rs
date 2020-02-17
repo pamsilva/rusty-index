@@ -2,16 +2,18 @@ use std::env;
 use std::fs::File;
 use std::io::prelude::*;
 use std::io::{Result, stdin};
+use std::sync::mpsc::channel;
 
+extern crate num_cpus;
+
+extern crate threadpool;
+use threadpool::ThreadPool;
 
 extern crate crypto;
-
 use crypto::digest::Digest;
 use crypto::sha3::Sha3;
 
-
 mod index_db;
-
 use index_db::IndexStorage;
 
 
@@ -44,13 +46,18 @@ fn get_name_and_path(pwd: &String, file_name: &String) -> (String, String){
         relevant_file_name = String::from(new_file_name);
     }
     
-    let real_path = format!("{}/{}", pwd, relevant_file_name);
+    let mut real_path = format!("{}/{}", pwd, relevant_file_name);
+    if file_name.starts_with("/") {
+        real_path = relevant_file_name;
+    }
+    
     let components: Vec<&str> = real_path.rsplitn(2, '/').collect();
     return (String::from(components[0]), String::from(components[1]));
 }
 
 
 fn main() {
+    let pool = ThreadPool::new(num_cpus::get());
     let file_name = String::from("index.db");
     let data_source = index_db::initalise_db(&file_name).unwrap();
 
@@ -61,7 +68,7 @@ fn main() {
     
     let current_dir = String::from(env::current_dir().unwrap().into_os_string().into_string().unwrap());
 
-    let mut records = Vec::<index_db::IndexRecord>::new();
+    let mut files = Vec::<String>::new();
     loop {
         let mut input = String::new();
 
@@ -72,30 +79,52 @@ fn main() {
         if input == "" {
             break;
         }
-        
-        let file_hash = hash_file(&input).unwrap();
-        println!("{:?} file has hash {:?}", input, file_hash);
 
-        let (path, file_name) = get_name_and_path(&current_dir, &input);
-        
-        let new_record = index_db::IndexRecord {
-            id: 0,
-            checksum: file_hash,
-            name: String::from(file_name),
-            path: String::from(path),
-        };
+        files.push(input);
+    }
+    println!("Files to process: {:#?}", files);
 
-        records.push(new_record);
-     }
+    let (tx, rx) = channel();
 
+    for file in files {
+        let tx = tx.clone();
+        let local_current_dir = current_dir.clone();
+        pool.execute(move || {
+            let file_hash = hash_file(&file).unwrap();
+            println!("{:?} file has hash {:?}", file, file_hash);
+            let (path, file_name) = get_name_and_path(&local_current_dir, &file);
+            
+            let new_record = index_db::IndexRecord {
+                id: 0,
+                checksum: file_hash,
+                name: String::from(file_name),
+                path: String::from(path),
+            };
+
+            tx.send(new_record).expect("Could not send data!");
+        })
+    }
+
+    println!("Finished processing or spanning. Dropping connection ...");
+    drop(tx);
+    
+    println!("Dropped, now saving.");
+    let mut records = Vec::<index_db::IndexRecord>::new();
+    for r in rx.iter() {
+        records.push(r);
+    }
+
+    println!("Inserting Data.");
     match data_source.insert(&records) {
         Ok(_) => println!("Record successfully inserted"),
         Err(e) => println!("Error inserting record: {:?}", e),
     };
+
+    println!("All Done ... Enjoy.");
     
-    let res = data_source.select(String::from("Cargo"));
-    match res {
-        Ok(val) => println!("res: '{:?}'", val),
-        Err(err) => println!("error parsing header: {:?}", err),
-    }
+    // let res = data_source.select(String::from("Cargo"));
+    // match res {
+    //     Ok(val) => println!("res: '{:?}'", val),
+    //     Err(err) => println!("error parsing header: {:?}", err),
+    // }
 }
