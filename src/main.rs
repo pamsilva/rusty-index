@@ -116,8 +116,8 @@ fn main() {
 
     println!("Inserting Data.");
     match data_source.insert(&records) {
-        Ok(_) => println!("Record successfully inserted"),
-        Err(e) => println!("Error inserting record: {:?}", e),
+        Ok(_) => println!("Records successfully inserted"),
+        Err(e) => println!("Error inserting records: {:?}", e),
     };
 
     println!("All Done ... Enjoy.");
