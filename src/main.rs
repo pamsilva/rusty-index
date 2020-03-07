@@ -105,7 +105,7 @@ fn main() {
         })
     }
 
-    println!("Finished processing or spanning. Dropping connection ...");
+    println!("Finished spanning. Dropping connection ...");
     drop(tx);
     
     println!("Dropped, now saving.");
