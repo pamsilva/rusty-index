@@ -11,7 +11,7 @@ use threadpool::ThreadPool;
 
 extern crate crypto;
 use crypto::digest::Digest;
-use crypto::sha3::Sha3;
+use crypto::md5::Md5;
 
 mod index_db;
 use index_db::IndexStorage;
@@ -23,7 +23,7 @@ const BUFFER_SIZE: usize = 1024;
 fn hash_file(file_path: &String) -> Result<String> {
     let mut file = File::open(&file_path)?;
 
-    let mut hasher = Sha3::sha3_256();
+    let mut hasher = Md5::new();
     let mut buffer = [0u8; BUFFER_SIZE];    
     loop {
         let n = file.read(&mut buffer)?;
