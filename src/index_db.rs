@@ -17,6 +17,7 @@ pub trait IndexStorage {
     fn create(&self) -> Result<()>;
     fn insert(&self, arr: &Vec<IndexRecord>) -> Result<()> ;
     fn select(&self, name: String) -> Result<Vec<IndexRecord>>;
+    fn fetch_sorted(&self) -> Result<Vec<IndexRecord>>;
 }
 
 
@@ -30,6 +31,7 @@ pub fn initalise_db(file_name: &String) -> Result<SQLite3> {
         conn: Connection::open(file_name.as_str())?,
     })
 }
+
 
 impl IndexStorage for SQLite3 {
     fn create(&self) -> Result<()> {
@@ -67,6 +69,26 @@ impl IndexStorage for SQLite3 {
         )?;
 
         let records = stmt.query_map(params![prepared_name], |row| {
+            Ok(IndexRecord {
+                id: row.get(0)?,
+                checksum: row.get(1)?,
+                name: row.get(2)?,
+                path: row.get(3)?,
+            })
+        })?;
+
+        let res = records.map(|r| r.unwrap()).collect::<Vec<IndexRecord>>();
+        Ok(res)
+    }
+
+    fn fetch_sorted(&self) -> Result<Vec<IndexRecord>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT i.id, i.checksum, i.name, i.path
+             FROM index_records i
+             ORDER BY i.path, i.name;"
+        )?;
+
+        let records = stmt.query_map(NO_PARAMS, |row| {
             Ok(IndexRecord {
                 id: row.get(0)?,
                 checksum: row.get(1)?,

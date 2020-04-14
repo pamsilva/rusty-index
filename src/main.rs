@@ -13,9 +13,13 @@ extern crate crypto;
 use crypto::digest::Digest;
 use crypto::md5::Md5;
 
+extern crate petgraph;
+use petgraph::dot::{Dot, Config};
+
 mod index_db;
 use index_db::IndexStorage;
 
+mod analyser;
 
 const BUFFER_SIZE: usize = 1024;
 
@@ -52,7 +56,7 @@ fn get_name_and_path(pwd: &String, file_name: &String) -> (String, String){
     }
     
     let components: Vec<&str> = real_path.rsplitn(2, '/').collect();
-    return (String::from(components[0]), String::from(components[1]));
+    return (String::from(components[1]), String::from(components[0]));
 }
 
 
@@ -120,11 +124,11 @@ fn main() {
         Err(e) => println!("Error inserting records: {:?}", e),
     };
 
-    println!("All Done ... Enjoy.");
+    println!("Saving complete. Enjoy.");
     
-    // let res = data_source.select(String::from("Cargo"));
-    // match res {
-    //     Ok(val) => println!("res: '{:?}'", val),
-    //     Err(err) => println!("error parsing header: {:?}", err),
-    // }
+    let res = data_source.fetch_sorted().unwrap();
+    let graph = analyser::process_entries(res);
+    let mut f = File::create("example1.dot").unwrap();
+    let output = format!("{}", Dot::new(&graph));
+    f.write_all(&output.as_bytes());
 }
