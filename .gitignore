@@ -8,3 +8,5 @@
 
 # data
 index.db
+*.dot
+*.svg
