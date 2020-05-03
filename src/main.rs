@@ -14,7 +14,7 @@ use crypto::digest::Digest;
 use crypto::md5::Md5;
 
 extern crate petgraph;
-use petgraph::dot::{Dot, Config};
+use petgraph::dot::Dot;
 
 mod index_db;
 use index_db::IndexStorage;
@@ -124,11 +124,15 @@ fn main() {
         Err(e) => println!("Error inserting records: {:?}", e),
     };
 
-    println!("Saving complete. Enjoy.");
+    println!("Saving to database. Enjoy.");
     
     let res = data_source.fetch_sorted().unwrap();
     let graph = analyser::process_entries(res);
     let mut f = File::create("example1.dot").unwrap();
     let output = format!("{}", Dot::new(&graph));
-    f.write_all(&output.as_bytes());
+
+    match f.write_all(&output.as_bytes()){
+        Ok(_) => println!("All done. Have a nice day in the world."),
+        Err(e) => println!("Error writing to file {:?}", e),
+    }
 }
