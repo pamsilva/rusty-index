@@ -70,7 +70,9 @@ fn main() {
         Err(e) => println!("Error initialising database: {:?}", e),
     };
     
-    let current_dir = String::from(env::current_dir().unwrap().into_os_string().into_string().unwrap());
+    let current_dir = String::from(
+        env::current_dir().unwrap().into_os_string().into_string().unwrap()
+    );
 
     let mut files = Vec::<String>::new();
     loop {
