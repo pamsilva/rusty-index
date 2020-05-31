@@ -35,6 +35,95 @@ impl fmt::Display for GNode {
 }
 
 
+#[derive(Debug)]
+pub struct GraphStorage {
+    pub graph: Graph::<GNode, String>,
+    pub root: NodeIndex,
+}
+
+
+pub fn initialise_graph() -> GraphStorage {
+    let mut new_graph = Graph::<GNode, String>::new();
+    let root_index = new_graph.add_node(GNode::DirNode{
+        name: String::from("root"),
+        checksum: String::from(""),
+    });
+
+    GraphStorage {
+        graph: new_graph,
+        root: root_index,
+    }
+}
+
+
+pub trait GraphIndexStorage {
+    fn insert(& mut self, sorted_entries: Vec<IndexRecord>);
+    // fb find_duplicated_nod
+}
+
+
+impl GraphIndexStorage for GraphStorage {
+
+    fn insert(& mut self, sorted_entries: Vec<IndexRecord>) {
+        let mut cursor = self.root;
+        let mut trace = VecDeque::<NodeIndex>::new();
+        trace.push_front(cursor);
+        for record in sorted_entries {
+            let path_elems: Vec<&str> = record.path.split("/").collect();
+            let relevant_elements = &path_elems[1..]; 
+
+            for elem in relevant_elements.iter().as_slice() {
+                if *elem == "" {
+                    continue;
+                }
+                
+                cursor = match is_linked(&self.graph, &cursor, *elem) {
+                    Some(res) => res,
+                    None      => {
+                        let new_node = self.graph.add_node(GNode::DirNode {
+                            name: String::from(*elem),
+                            checksum: String::from("potato"),
+                        });
+                        self.graph.add_edge(cursor, new_node, String::from("dir"));
+                        new_node
+                    },
+                };
+
+                trace.push_front(cursor);
+            }
+
+            
+            let leaf = self.graph.add_node(GNode::FileLeaf {
+                name: String::from(record.name),
+                checksum: String::from(record.checksum),
+                id: record.id,
+            });
+            self.graph.add_edge(cursor, leaf, String::from("file"));
+            
+            for elem in trace.iter() {
+                let checksum = calculate_hash(&self.graph, &elem); 
+
+                let node = self.graph.node_weight_mut(*elem).unwrap();
+                let node_name = match node {
+                    GNode::DirNode {name, checksum: _2} => name,
+                    GNode::FileLeaf {name: _1, checksum: _2, id: _3} => panic!(
+                        "LeafNode cannot be part of the trace. It should be impossible"
+                    ),
+                };
+
+                *node = GNode::DirNode {
+                    name: node_name.to_string(),
+                    checksum: checksum,
+                }
+            }
+            
+            cursor = self.root;
+        }
+
+    }
+}
+
+
 fn is_linked(graph: &Graph::<GNode, String>, cursor: &NodeIndex, key: &str) -> Option<NodeIndex> {
     for thing in graph.neighbors(*cursor) {
         let i = match graph.node_weight(thing).unwrap() {
@@ -80,68 +169,6 @@ fn calculate_hash(graph: &Graph::<GNode, String>, cursor: &NodeIndex) -> String 
 }
 
 
-pub fn process_entries(sorted_entries: Vec<IndexRecord>) -> Graph::<GNode, String>{
-    let mut graph = Graph::new();
-
-    let root_index = graph.add_node(GNode::DirNode{
-        name: String::from("root"),
-        checksum: String::from("potato"),
-    });
-
-    let mut cursor = root_index;
-    let mut trace = VecDeque::<NodeIndex>::new();
-    trace.push_front(cursor);
-    for record in sorted_entries {
-        let path_elems: Vec<&str> = record.path.split("/").collect();
-        let relevant_elements = &path_elems[1..]; 
-
-        for elem in relevant_elements.iter().as_slice() {
-            cursor = match is_linked(&graph, &cursor, *elem) {
-                Some(res) => res,
-                None      => {
-                    let new_node = graph.add_node(GNode::DirNode {
-                        name: String::from(*elem),
-                        checksum: String::from("potato"),
-                    });
-                    graph.add_edge(cursor, new_node, String::from("dir"));
-                    new_node
-                },
-            };
-
-            trace.push_front(cursor);
-        }
-
-        let leaf = graph.add_node(GNode::FileLeaf {
-            name: String::from(record.name),
-            checksum: String::from(record.checksum),
-            id: record.id,
-        });
-        graph.add_edge(cursor, leaf, String::from("file"));
-        
-        for elem in trace.iter() {
-            let checksum = calculate_hash(&graph, &elem); 
-
-            let node = graph.node_weight_mut(*elem).unwrap();
-            let node_name = match node {
-                GNode::DirNode {name, checksum: _2} => name,
-                GNode::FileLeaf {name: _1, checksum: _2, id: _3} => panic!(
-                    "LeafNode cannot be part of the trace. It should be impossible"
-                ),
-            };
-
-            *node = GNode::DirNode {
-                name: node_name.to_string(),
-                checksum: checksum,
-            }
-        }
-        
-        cursor = root_index;
-    }
-
-    return graph;
-}
-
-
 #[cfg(test)]
 mod test {
     use super::*;
@@ -156,9 +183,10 @@ mod test {
             path: String::from("/some/location/"),
         });
 
-        let graph = process_entries(records);
+        let mut graph = initialise_graph();
+        graph.insert(records);
         
-        assert_eq!(true, true)
+        assert_eq!(graph.graph.node_count(), 4)
     }
 }
 

@@ -101,14 +101,3 @@ impl IndexStorage for SQLite3 {
         Ok(res)
     }
 }
-
-
-// #cfg[test()]
-// mod test {
-//     use supper::*;
-
-//     #[test]
-//     fn test_db_interaction() {
-        
-//     }
-// }
