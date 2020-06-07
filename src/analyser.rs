@@ -2,6 +2,7 @@ extern crate petgraph;
 use petgraph::graph::{Graph, NodeIndex};
 use std::fmt;
 use std::collections::VecDeque;
+use std::collections::HashMap;
 
 extern crate crypto;
 use crypto::md5::Md5;
@@ -36,6 +37,13 @@ impl fmt::Display for GNode {
 
 
 #[derive(Debug)]
+struct EdgeInfo {
+    node: NodeIndex,
+    tag: String,
+}
+
+
+#[derive(Debug)]
 pub struct GraphStorage {
     pub graph: Graph::<GNode, String>,
     pub root: NodeIndex,
@@ -58,7 +66,7 @@ pub fn initialise_graph() -> GraphStorage {
 
 pub trait GraphIndexStorage {
     fn insert(& mut self, sorted_entries: Vec<IndexRecord>);
-    // fb find_duplicated_nod
+    fn find_duplicates(&self) -> HashMap<String, Vec<String>>;
 }
 
 
@@ -121,6 +129,59 @@ impl GraphIndexStorage for GraphStorage {
         }
 
     }
+
+    fn find_duplicates(&self) -> HashMap<String, Vec<String>> {
+        let mut duplicates = HashMap::<String, Vec<String>>::new();
+        let mut edges = VecDeque::<EdgeInfo>::new();
+        edges.push_back(EdgeInfo {
+            node: self.root,
+            tag: String::from(""),
+        });
+
+        while !edges.is_empty() {
+            let pivot = edges.pop_front().unwrap();
+            
+            for elem in self.graph.neighbors(pivot.node) {
+                match self.graph.node_weight(elem).unwrap() {
+                    
+                    GNode::FileLeaf {name, checksum, id: _} => {
+                        let path = String::from(format!("{}/{}", pivot.tag.as_str(), name.as_str()));
+
+                        match duplicates.get_mut(checksum) {
+                            Some(vec) => {vec.push(path)},
+                            None => {
+                                let mut new_vec = Vec::<String>::new();
+                                new_vec.push(path);
+                                duplicates.insert(String::from(checksum.as_str()), new_vec);
+                            },
+                        };
+                    },
+                    
+                    GNode::DirNode {name, checksum} => {
+                        let path = String::from(format!("{}/{}", pivot.tag.as_str(), name.as_str()));
+
+                        match duplicates.get_mut(checksum) {
+                            Some(vec) => {
+                                vec.push(path);
+                            },
+                            None => {
+                                let mut new_vec = Vec::<String>::new();
+                                new_vec.push(path.clone());
+                                duplicates.insert(String::from(checksum.as_str()), new_vec);
+
+                                edges.push_back(EdgeInfo {
+                                    node: elem,
+                                    tag: path,
+                                });
+                            },
+                        };
+                    },
+                };
+            }
+        }
+
+        return duplicates.into_iter().filter(|(_, v)| v.len() > 1).collect();
+    }
 }
 
 
@@ -172,7 +233,7 @@ fn calculate_hash(graph: &Graph::<GNode, String>, cursor: &NodeIndex) -> String 
 #[cfg(test)]
 mod test {
     use super::*;
-
+    
     #[test]
     fn test_process_entries() {
         let mut records = Vec::<IndexRecord>::new();
@@ -180,13 +241,41 @@ mod test {
             id: 1,
             checksum: String::from("aaaaa"),
             name: String::from("aaaaa.txt"),
+            path: String::from("/some/"),
+        });
+        records.push(IndexRecord {
+            id: 1,
+            checksum: String::from("aaaaa"),
+            name: String::from("aaaaa.txt"),
             path: String::from("/some/location/"),
         });
-
+        records.push(IndexRecord {
+            id: 1,
+            checksum: String::from("aaaaa"),
+            name: String::from("aaaaa.txt"),
+            path: String::from("/some/other/"),
+        });
+        records.push(IndexRecord {
+            id: 1,
+            checksum: String::from("aaaaa"),
+            name: String::from("aaaaa.txt"),
+            path: String::from("/some/yet-another/"),
+        });
+        records.push(IndexRecord {
+            id: 1,
+            checksum: String::from("aabbb"),
+            name: String::from("aabbb.txt"),
+            path: String::from("/some/location/"),
+        });
+        
         let mut graph = initialise_graph();
         graph.insert(records);
-        
-        assert_eq!(graph.graph.node_count(), 4)
+        let res = graph.find_duplicates();
+
+        println!("{:#?}", res);
+
+        assert_eq!(res.len(), 2);
+        assert_eq!(res.get("aaaaa").unwrap().len(), 3);
     }
 }
 

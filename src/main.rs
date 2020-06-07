@@ -78,7 +78,7 @@ fn main() {
         Err(e) => println!("Error initialising database: {:?}", e),
     };
     
-    if let Some(matches) = config.subcommand_matches("parse") {
+    if let Some(_matches) = config.subcommand_matches("parse") {
         let pool = ThreadPool::new(num_cpus::get());
         let current_dir = String::from(
             env::current_dir().unwrap().into_os_string().into_string().unwrap()
@@ -137,7 +137,7 @@ fn main() {
             Err(e) => println!("Error inserting records: {:?}", e),
         };
         
-    } else if let Some(matches) = config.subcommand_matches("generate") {
+    } else if let Some(_matches) = config.subcommand_matches("generate") {
         let res = data_source.fetch_sorted().unwrap();
         let mut graph = analyser::initialise_graph();
         graph.insert(res);
