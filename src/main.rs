@@ -68,6 +68,7 @@ fn main() {
     let config = App::new("rusty-index")
         .subcommand(SubCommand::with_name("parse"))
         .subcommand(SubCommand::with_name("generate"))
+        .subcommand(SubCommand::with_name("virtual"))
         .get_matches();
 
     let file_name = String::from("index.db");
@@ -148,6 +149,73 @@ fn main() {
             Ok(_) => println!("All done. Have a nice day in the world."),
             Err(e) => println!("Error writing to file {:?}", e),
         }
+        
+    } else if let Some(_matches) = config.subcommand_matches("virtual") {
+        let pool = ThreadPool::new(num_cpus::get());
+        let current_dir = String::from(
+            env::current_dir().unwrap().into_os_string().into_string().unwrap()
+
+        );
+
+        let mut files = Vec::<String>::new();
+        loop {
+            let mut input = String::new();
+
+            stdin()
+                .read_line(&mut input)
+                .expect("failed to read from pipe");
+            input = input.trim().to_string();
+            if input == "" {
+                break;
+            }
+
+            files.push(input);
+        }
+        println!("Files to process: {:#?}", files);
+
+        let (tx, rx) = channel();
+
+        for file in files {
+            let tx = tx.clone();
+            let local_current_dir = current_dir.clone();
+            pool.execute(move || {
+                let file_hash = hash_file(&file).unwrap();
+                println!("{:?} file has hash {:?}", file, file_hash);
+                let (path, file_name) = get_name_and_path(&local_current_dir, &file);
+                
+                let new_record = index_db::IndexRecord {
+                    id: 0,
+                    checksum: file_hash,
+                    name: String::from(file_name),
+                    path: String::from(path),
+                };
+
+                tx.send(new_record).expect("Could not send data!");
+            })
+        }
+
+        println!("Finished spanning. Dropping connection ...");
+        drop(tx);
+        
+        let mut records = Vec::<index_db::IndexRecord>::new();
+        for r in rx.iter() {
+            records.push(r);
+        }
+
+        println!("Dropped, now saving.");
+        let mut graph = analyser::initialise_graph();
+        graph.insert(records);
+        let mut f = File::create("example1.dot").unwrap();
+        let output = format!("{}", Dot::new(&graph.graph));
+
+        println!("Writing dot file with final results.");
+        match f.write_all(&output.as_bytes()){
+            Ok(_) => println!("All done. Have a nice day in the world."),
+            Err(e) => println!("Error writing to file {:?}", e),
+        }
+
+        let final_res = graph.find_duplicates();
+        println!("The final result: {:#?}", final_res);
         
     } else {
         println!("You need to either parse or generate, otherwise there is nothing to do.");

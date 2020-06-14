@@ -1,5 +1,6 @@
 extern crate petgraph;
 use petgraph::graph::{Graph, NodeIndex};
+
 use std::fmt;
 use std::collections::VecDeque;
 use std::collections::HashMap;
@@ -189,7 +190,7 @@ fn is_linked(graph: &Graph::<GNode, String>, cursor: &NodeIndex, key: &str) -> O
     for thing in graph.neighbors(*cursor) {
         let i = match graph.node_weight(thing).unwrap() {
             GNode::FileLeaf {name: _1, checksum: _2, id: _3} => None,
-            GNode::DirNode {name: dir_name, checksum: _2} => Some(dir_name),
+|            GNode::DirNode {name: dir_name, checksum: _2} => Some(dir_name),
         };
 
         match i {
@@ -204,7 +205,6 @@ fn is_linked(graph: &Graph::<GNode, String>, cursor: &NodeIndex, key: &str) -> O
         };
     }
 
-    println!();
     return None;
 }
 
@@ -271,7 +271,7 @@ mod test {
         let mut graph = initialise_graph();
         graph.insert(records);
         let res = graph.find_duplicates();
-
+        
         println!("{:#?}", res);
 
         assert_eq!(res.len(), 2);
