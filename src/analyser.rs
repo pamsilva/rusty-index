@@ -1,9 +1,9 @@
-extern crate petgraph;
-use petgraph::graph::{Graph, NodeIndex};
-
 use std::fmt;
 use std::collections::VecDeque;
 use std::collections::HashMap;
+
+extern crate petgraph;
+use petgraph::graph::{Graph, NodeIndex};
 
 extern crate crypto;
 use crypto::md5::Md5;
@@ -11,6 +11,14 @@ use crypto::digest::Digest;
 
 use crate::index_db;
 use index_db::IndexRecord;
+
+
+#[derive(Debug)]
+pub struct FileRecord {
+    pub checksum: String,
+    pub name: String,
+    pub path: Vec<String>,
+}
 
 
 #[derive(Debug)]
@@ -66,13 +74,101 @@ pub fn initialise_graph() -> GraphStorage {
 
 
 pub trait GraphIndexStorage {
+    fn bulk_insert(& mut self, node: &mut NodeIndex, sorted_entries: Vec<FileRecord>);
     fn insert(& mut self, sorted_entries: Vec<IndexRecord>);
     fn find_duplicates(&self) -> HashMap<String, Vec<String>>;
 }
 
 
 impl GraphIndexStorage for GraphStorage {
+    fn bulk_insert(& mut self, node: &mut NodeIndex, sorted_entries: Vec<FileRecord>) {
+        let mut local_contents = HashMap::<String, Vec<FileRecord>>::new();
 
+        for record in sorted_entries {
+            if record.path.len() == 0 {
+                let leaf = self.graph.add_node(GNode::FileLeaf {
+                    name: String::from(record.name),
+                    checksum: String::from(record.checksum),
+                    id: 0,
+                });
+                self.graph.add_edge(*node, leaf, String::from("file"));
+
+                continue;
+            }
+            
+            let s = &record.path[0];
+            match local_contents.get_mut(s) {
+                Some(vec) => {
+                    let mut new_path = record.path.clone();
+                    let t = new_path.remove(0);
+                    if t.as_str() == "" && new_path.len() >= 1{
+                        new_path.remove(0);
+                    }
+                    
+                    vec.push(FileRecord {
+                        checksum: record.checksum,
+                        name: record.name,
+                        path: new_path
+                    });
+                }
+                None => {
+                    println!("length {:#?}", record.path.len());
+                    println!("thing {:#?}", &record.path[1..]);
+                    
+                    let mut new_vec = Vec::<FileRecord>::new();
+                    let mut new_path = record.path.clone();
+                    new_path.remove(0);
+                    
+                    new_vec.push(FileRecord {
+                        checksum: record.checksum,
+                        name: record.name,
+                        path: new_path
+                    });
+                    local_contents.insert(String::from(s), new_vec);
+                }
+            }            
+        }
+
+        // for each of the keys, check if the node already exists on the graph
+        // - if it does, get the node index and recursivelly call parallel_execution
+        // - if it doesn't, create the node and the edge between input node and new one
+        //   and then recusively call parallel_execution with new node and corresponding
+        //   file records
+        for (key, value) in local_contents {
+            let mut cursor = match is_linked(&self.graph, node, &key) {
+                Some(res) => res,
+                None => {
+                    let new_node = self.graph.add_node(GNode::DirNode {
+                        name: String::from(key),
+                        checksum: String::from("NA"),
+                    });
+                    self.graph.add_edge(*node, new_node, String::from("dir"));
+                    
+                    new_node
+                },
+            };
+            
+            self.bulk_insert(&mut cursor, value);
+        }
+
+
+        // update current node's hash for all of its contents.
+        let checksum = calculate_hash(&self.graph, node); 
+        let node_data = self.graph.node_weight_mut(*node).unwrap();
+        let node_name = match node_data {
+            GNode::DirNode {name, checksum: _2} => name,
+            GNode::FileLeaf {name: _1, checksum: _2, id: _3} => panic!(
+                "LeafNode cannot be part of the trace. It should be impossible"
+            ),
+        };
+
+        *node_data = GNode::DirNode {
+            name: node_name.to_string(),
+            checksum: checksum,
+        }
+
+    }
+    
     fn insert(& mut self, sorted_entries: Vec<IndexRecord>) {
         let mut cursor = self.root;
         let mut trace = VecDeque::<NodeIndex>::new();
@@ -88,7 +184,7 @@ impl GraphIndexStorage for GraphStorage {
                 
                 cursor = match is_linked(&self.graph, &cursor, *elem) {
                     Some(res) => res,
-                    None      => {
+                    None => {
                         let new_node = self.graph.add_node(GNode::DirNode {
                             name: String::from(*elem),
                             checksum: String::from("potato"),
@@ -190,7 +286,7 @@ fn is_linked(graph: &Graph::<GNode, String>, cursor: &NodeIndex, key: &str) -> O
     for thing in graph.neighbors(*cursor) {
         let i = match graph.node_weight(thing).unwrap() {
             GNode::FileLeaf {name: _1, checksum: _2, id: _3} => None,
-|            GNode::DirNode {name: dir_name, checksum: _2} => Some(dir_name),
+            GNode::DirNode {name: dir_name, checksum: _2} => Some(dir_name),
         };
 
         match i {
@@ -273,6 +369,54 @@ mod test {
         let res = graph.find_duplicates();
         
         println!("{:#?}", res);
+
+        assert_eq!(res.len(), 2);
+        assert_eq!(res.get("aaaaa").unwrap().len(), 3);
+    }
+
+    fn elem_from_path(path: String) -> Vec<String> {
+        path.split('/')
+            .filter(|x| *x != "")
+            .map(|x| String::from(x))
+            .collect()
+    }
+
+    #[test]
+    fn test_bulk_insert() {
+        let mut records = Vec::<FileRecord>::new();
+        records.push(FileRecord {
+            checksum: String::from("aaaaa"),
+            name: String::from("aaaaa.txt"),
+            path: elem_from_path(String::from("/some/")),
+        });
+        records.push(FileRecord {
+            checksum: String::from("aaaaa"),
+            name: String::from("aaaaa.txt"),
+            path: elem_from_path(String::from("/some/location/")),
+        });
+        records.push(FileRecord {
+            checksum: String::from("aaaaa"),
+            name: String::from("aaaaa.txt"),
+            path: elem_from_path(String::from("/some/other/")),
+        });
+        records.push(FileRecord {
+            checksum: String::from("aaaaa"),
+            name: String::from("aaaaa.txt"),
+            path: elem_from_path(String::from("/some/yet-another/")),
+        });
+        records.push(FileRecord {
+            checksum: String::from("aabbb"),
+            name: String::from("aabbb.txt"),
+            path: elem_from_path(String::from("/some/location/")),
+        });
+        
+        let mut graph = initialise_graph();
+        let mut root = graph.root;
+        graph.bulk_insert(&mut root, records);
+        
+        let res = graph.find_duplicates();
+        
+        println!("dupes : {:#?}", res);
 
         assert_eq!(res.len(), 2);
         assert_eq!(res.get("aaaaa").unwrap().len(), 3);
