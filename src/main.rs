@@ -285,9 +285,18 @@ fn main() {
         }
 
         println!("Dropped, now saving.");
-        let mut graph = analyser::initialise_graph();
-        let mut root = graph.root;
-        graph.bulk_insert(&mut root, records);
+        // let mut graph = analyser::initialise_graph();
+        // let mut root = graph.root;
+        // graph.bulk_insert(&mut root, records);
+
+        let graph_ref = analyser::create_shared_graph();
+        let local_ref = graph_ref.clone();
+        let mut root = local_ref.lock().unwrap().root;
+
+        let first_ref = graph_ref.clone();
+        analyser::parallel_bulk_insert(first_ref, &mut root, records);
+        let graph = local_ref.lock().unwrap();
+        
         let mut f = File::create("example1.dot").unwrap();
         let output = format!("{}", Dot::new(&graph.graph));
 

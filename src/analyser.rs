@@ -1,6 +1,8 @@
 use std::fmt;
 use std::collections::VecDeque;
 use std::collections::HashMap;
+use std::thread;
+use std::sync::{Arc, Mutex};
 
 extern crate petgraph;
 use petgraph::graph::{Graph, NodeIndex};
@@ -74,14 +76,15 @@ pub fn initialise_graph() -> GraphStorage {
 
 
 pub trait GraphIndexStorage {
-    fn bulk_insert(& mut self, node: &mut NodeIndex, sorted_entries: Vec<FileRecord>);
+    fn bulk_insert(&mut self, node: &mut NodeIndex, sorted_entries: Vec<FileRecord>);
     fn insert(& mut self, sorted_entries: Vec<IndexRecord>);
     fn find_duplicates(&self) -> HashMap<String, Vec<String>>;
 }
 
 
 impl GraphIndexStorage for GraphStorage {
-    fn bulk_insert(& mut self, node: &mut NodeIndex, sorted_entries: Vec<FileRecord>) {
+    
+    fn bulk_insert(&mut self, node: &mut NodeIndex, sorted_entries: Vec<FileRecord>) {
         let mut local_contents = HashMap::<String, Vec<FileRecord>>::new();
 
         for record in sorted_entries {
@@ -112,9 +115,6 @@ impl GraphIndexStorage for GraphStorage {
                     });
                 }
                 None => {
-                    println!("length {:#?}", record.path.len());
-                    println!("thing {:#?}", &record.path[1..]);
-                    
                     let mut new_vec = Vec::<FileRecord>::new();
                     let mut new_path = record.path.clone();
                     new_path.remove(0);
@@ -147,10 +147,9 @@ impl GraphIndexStorage for GraphStorage {
                     new_node
                 },
             };
-            
+
             self.bulk_insert(&mut cursor, value);
         }
-
 
         // update current node's hash for all of its contents.
         let checksum = calculate_hash(&self.graph, node); 
@@ -279,6 +278,125 @@ impl GraphIndexStorage for GraphStorage {
 
         return duplicates.into_iter().filter(|(_, v)| v.len() > 1).collect();
     }
+}
+
+
+pub fn parallel_bulk_insert(shared_graph: Arc<Mutex<GraphStorage>>, node: &mut NodeIndex, sorted_entries: Vec<FileRecord>){
+    let mut local_contents = HashMap::<String, Vec<FileRecord>>::new();
+    
+    for record in sorted_entries {
+        if record.path.len() == 0 {
+            let mut tmp_graph = shared_graph.lock().unwrap();
+
+            let leaf = tmp_graph.graph.add_node(GNode::FileLeaf {
+                name: String::from(record.name),
+                checksum: String::from(record.checksum),
+                id: 0,
+            });
+            tmp_graph.graph.add_edge(*node, leaf, String::from("file"));
+
+            continue;
+        }
+    
+        let s = &record.path[0];
+        match local_contents.get_mut(s) {
+            Some(vec) => {
+                let mut new_path = record.path.clone();
+                let t = new_path.remove(0);
+                if t.as_str() == "" && new_path.len() >= 1{
+                    new_path.remove(0);
+                }
+    
+                vec.push(FileRecord {
+                    checksum: record.checksum,
+                    name: record.name,
+                    path: new_path
+                });
+            }
+            None => {
+                let mut new_vec = Vec::<FileRecord>::new();
+                let mut new_path = record.path.clone();
+                new_path.remove(0);
+    
+                new_vec.push(FileRecord {
+                    checksum: record.checksum,
+                    name: record.name,
+                    path: new_path
+                });
+                local_contents.insert(String::from(s), new_vec);
+            }
+        }            
+    }
+
+    // for each of the keys, check if the node already exists on the graph
+    // - if it does, get the node index and recursivelly call parallel_execution
+    // - if it doesn't, create the node and the edge between input node and new one
+    //   and then recusively call parallel_execution with new node and corresponding
+    //   file records
+    let mut handles = Vec::new();
+    for (key, value) in local_contents {
+        let mut tmp_graph = shared_graph.lock().unwrap();
+
+        let mut cursor = match is_linked(&tmp_graph.graph, node, &key) {
+            Some(res) => res,
+            None => {
+                let new_node = tmp_graph.graph.add_node(GNode::DirNode {
+                    name: String::from(key),
+                    checksum: String::from("NA"),
+                });
+                tmp_graph.graph.add_edge(*node, new_node, String::from("dir"));
+    
+                new_node
+            },
+        };
+
+        let new_ref = shared_graph.clone();
+        handles.push(thread::spawn(move || {
+            parallel_bulk_insert(new_ref, &mut cursor, value);
+        }));
+    }
+
+    for item in handles {
+        item.join().unwrap();
+    }
+
+    // Limiting lock scope under localscope
+    {
+        let mut tmp_graph = shared_graph.lock().unwrap();
+
+        // update current node's hash for all of its contents.
+        let checksum = calculate_hash(&tmp_graph.graph, node); 
+        let node_data = tmp_graph.graph.node_weight_mut(*node).unwrap();
+        let node_name = match node_data {
+            GNode::DirNode {name, checksum: _2} => name,
+            GNode::FileLeaf {name: _1, checksum: _2, id: _3} => panic!(
+                "LeafNode cannot be part of the trace. It should be impossible"
+            ),
+        };
+
+        *node_data = GNode::DirNode {
+            name: node_name.to_string(),
+            checksum: checksum,
+        }
+        
+    }
+    
+}
+
+
+pub fn create_shared_graph() -> Arc<Mutex<GraphStorage>> {
+    let mut new_graph = Graph::<GNode, String>::new();
+    let root_index = new_graph.add_node(GNode::DirNode{
+        name: String::from("root"),
+        checksum: String::from(""),
+    });
+
+    Arc::new(Mutex::new(
+        GraphStorage {
+            graph: new_graph,
+            root: root_index,
+        }
+    ))
 }
 
 
@@ -415,6 +533,50 @@ mod test {
         graph.bulk_insert(&mut root, records);
         
         let res = graph.find_duplicates();
+        
+        println!("dupes : {:#?}", res);
+
+        assert_eq!(res.len(), 2);
+        assert_eq!(res.get("aaaaa").unwrap().len(), 3);
+    }
+
+    #[test]
+    fn test_bulk_parallel_insert() {
+        let mut records = Vec::<FileRecord>::new();
+        records.push(FileRecord {
+            checksum: String::from("aaaaa"),
+            name: String::from("aaaaa.txt"),
+            path: elem_from_path(String::from("/some/")),
+        });
+        records.push(FileRecord {
+            checksum: String::from("aaaaa"),
+            name: String::from("aaaaa.txt"),
+            path: elem_from_path(String::from("/some/location/")),
+        });
+        records.push(FileRecord {
+            checksum: String::from("aaaaa"),
+            name: String::from("aaaaa.txt"),
+            path: elem_from_path(String::from("/some/other/")),
+        });
+        records.push(FileRecord {
+            checksum: String::from("aaaaa"),
+            name: String::from("aaaaa.txt"),
+            path: elem_from_path(String::from("/some/yet-another/")),
+        });
+        records.push(FileRecord {
+            checksum: String::from("aabbb"),
+            name: String::from("aabbb.txt"),
+            path: elem_from_path(String::from("/some/location/")),
+        });
+        
+        let graph_ref = create_shared_graph();
+        let local_ref = graph_ref.clone();
+        let mut root = local_ref.lock().unwrap().root;
+
+        let first_ref = graph_ref.clone();
+        parallel_bulk_insert(first_ref, &mut root, records);
+        
+        let res = local_ref.lock().unwrap().find_duplicates();
         
         println!("dupes : {:#?}", res);
 
