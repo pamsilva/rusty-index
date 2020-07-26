@@ -16,6 +16,13 @@ use index_db::IndexRecord;
 
 
 #[derive(Debug)]
+struct EdgeInfo {
+    node: NodeIndex,
+    tag: String,
+}
+
+
+#[derive(Debug)]
 pub struct FileRecord {
     pub checksum: String,
     pub name: String,
@@ -48,21 +55,14 @@ impl fmt::Display for GNode {
 
 
 #[derive(Debug)]
-struct EdgeInfo {
-    node: NodeIndex,
-    tag: String,
-}
-
-
-#[derive(Debug)]
 pub struct GraphStorage {
-    pub graph: Graph::<GNode, String>,
+    pub graph: Graph::<GNode, ()>,
     pub root: NodeIndex,
 }
 
 
 pub fn initialise_graph() -> GraphStorage {
-    let mut new_graph = Graph::<GNode, String>::new();
+    let mut new_graph = Graph::<GNode, ()>::new();
     let root_index = new_graph.add_node(GNode::DirNode{
         name: String::from("root"),
         checksum: String::from(""),
@@ -75,14 +75,14 @@ pub fn initialise_graph() -> GraphStorage {
 }
 
 
-pub trait GraphIndexStorage {
+pub trait GraphStorageInterface {
     fn bulk_insert(&mut self, node: &mut NodeIndex, sorted_entries: Vec<FileRecord>);
     fn insert(& mut self, sorted_entries: Vec<IndexRecord>);
     fn find_duplicates(&self) -> HashMap<String, Vec<String>>;
 }
 
 
-impl GraphIndexStorage for GraphStorage {
+impl GraphStorageInterface for GraphStorage {
     
     fn bulk_insert(&mut self, node: &mut NodeIndex, sorted_entries: Vec<FileRecord>) {
         let mut local_contents = HashMap::<String, Vec<FileRecord>>::new();
@@ -94,7 +94,7 @@ impl GraphIndexStorage for GraphStorage {
                     checksum: String::from(record.checksum),
                     id: 0,
                 });
-                self.graph.add_edge(*node, leaf, String::from("file"));
+                self.graph.add_edge(*node, leaf, ());
 
                 continue;
             }
@@ -142,7 +142,7 @@ impl GraphIndexStorage for GraphStorage {
                         name: String::from(key),
                         checksum: String::from("NA"),
                     });
-                    self.graph.add_edge(*node, new_node, String::from("dir"));
+                    self.graph.add_edge(*node, new_node, ());
                     
                     new_node
                 },
@@ -188,7 +188,7 @@ impl GraphIndexStorage for GraphStorage {
                             name: String::from(*elem),
                             checksum: String::from("potato"),
                         });
-                        self.graph.add_edge(cursor, new_node, String::from("dir"));
+                        self.graph.add_edge(cursor, new_node, ());
                         new_node
                     },
                 };
@@ -202,7 +202,7 @@ impl GraphIndexStorage for GraphStorage {
                 checksum: String::from(record.checksum),
                 id: record.id,
             });
-            self.graph.add_edge(cursor, leaf, String::from("file"));
+            self.graph.add_edge(cursor, leaf, ());
             
             for elem in trace.iter() {
                 let checksum = calculate_hash(&self.graph, &elem); 
@@ -293,7 +293,7 @@ pub fn parallel_bulk_insert(shared_graph: Arc<Mutex<GraphStorage>>, node: &mut N
                 checksum: String::from(record.checksum),
                 id: 0,
             });
-            tmp_graph.graph.add_edge(*node, leaf, String::from("file"));
+            tmp_graph.graph.add_edge(*node, leaf, ());
 
             continue;
         }
@@ -344,7 +344,7 @@ pub fn parallel_bulk_insert(shared_graph: Arc<Mutex<GraphStorage>>, node: &mut N
                     name: String::from(key),
                     checksum: String::from("NA"),
                 });
-                tmp_graph.graph.add_edge(*node, new_node, String::from("dir"));
+                tmp_graph.graph.add_edge(*node, new_node, ());
     
                 new_node
             },
@@ -360,32 +360,28 @@ pub fn parallel_bulk_insert(shared_graph: Arc<Mutex<GraphStorage>>, node: &mut N
         item.join().unwrap();
     }
 
-    // Limiting lock scope under localscope
-    {
-        let mut tmp_graph = shared_graph.lock().unwrap();
+    let mut tmp_graph = shared_graph.lock().unwrap();
 
-        // update current node's hash for all of its contents.
-        let checksum = calculate_hash(&tmp_graph.graph, node); 
-        let node_data = tmp_graph.graph.node_weight_mut(*node).unwrap();
-        let node_name = match node_data {
-            GNode::DirNode {name, checksum: _2} => name,
-            GNode::FileLeaf {name: _1, checksum: _2, id: _3} => panic!(
-                "LeafNode cannot be part of the trace. It should be impossible"
-            ),
-        };
+    // update current node's hash for all of its contents.
+    let checksum = calculate_hash(&tmp_graph.graph, node); 
+    let node_data = tmp_graph.graph.node_weight_mut(*node).unwrap();
+    let node_name = match node_data {
+        GNode::DirNode {name, checksum: _2} => name,
+        GNode::FileLeaf {name: _1, checksum: _2, id: _3} => panic!(
+            "LeafNode cannot be part of the trace. It should be impossible"
+        ),
+    };
 
-        *node_data = GNode::DirNode {
-            name: node_name.to_string(),
-            checksum: checksum,
-        }
-        
+    *node_data = GNode::DirNode {
+        name: node_name.to_string(),
+        checksum: checksum,
     }
     
 }
 
 
 pub fn create_shared_graph() -> Arc<Mutex<GraphStorage>> {
-    let mut new_graph = Graph::<GNode, String>::new();
+    let mut new_graph = Graph::<GNode, ()>::new();
     let root_index = new_graph.add_node(GNode::DirNode{
         name: String::from("root"),
         checksum: String::from(""),
@@ -400,7 +396,7 @@ pub fn create_shared_graph() -> Arc<Mutex<GraphStorage>> {
 }
 
 
-fn is_linked(graph: &Graph::<GNode, String>, cursor: &NodeIndex, key: &str) -> Option<NodeIndex> {
+fn is_linked(graph: &Graph::<GNode, ()>, cursor: &NodeIndex, key: &str) -> Option<NodeIndex> {
     for thing in graph.neighbors(*cursor) {
         let i = match graph.node_weight(thing).unwrap() {
             GNode::FileLeaf {name: _1, checksum: _2, id: _3} => None,
@@ -423,7 +419,7 @@ fn is_linked(graph: &Graph::<GNode, String>, cursor: &NodeIndex, key: &str) -> O
 }
 
 
-fn calculate_hash(graph: &Graph::<GNode, String>, cursor: &NodeIndex) -> String {
+fn calculate_hash(graph: &Graph::<GNode, ()>, cursor: &NodeIndex) -> String {
     let mut buff = Vec::<String>::new();
     for thing in graph.neighbors(*cursor) {
         let elem_checksum = match graph.node_weight(thing).unwrap() {

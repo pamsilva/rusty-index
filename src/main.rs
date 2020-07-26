@@ -23,7 +23,7 @@ mod index_db;
 use index_db::IndexStorage;
 
 mod analyser;
-use analyser::GraphIndexStorage;
+use analyser::GraphStorageInterface;
 
 
 const BUFFER_SIZE: usize = 1024;
@@ -78,6 +78,76 @@ fn get_name_and_split_path(pwd: &String, file_name: &String) -> (Vec<String>, St
 }
 
 
+
+fn load_files_from_stdin() -> Vec::<String> {
+    let mut files = Vec::<String>::new();
+    loop {
+        let mut input = String::new();
+
+        stdin()
+            .read_line(&mut input)
+            .expect("failed to read from pipe");
+        input = input.trim().to_string();
+        if input == "" {
+            break;
+        }
+
+        files.push(input);
+    }
+
+    return files;
+}
+
+
+fn process_into_file_records(file_list: Vec::<String>) -> Vec::<analyser::FileRecord> {
+    let current_dir = String::from(
+        env::current_dir().unwrap().into_os_string().into_string().unwrap()
+    );
+    let pool = ThreadPool::new(num_cpus::get());
+    let (tx, rx) = channel();
+
+    for file in file_list {
+        let tx = tx.clone();
+        let local_current_dir = current_dir.clone();
+        pool.execute(move || {
+            let file_hash = hash_file(&file).unwrap();
+            println!("{:?} file has hash {:?}", file, file_hash);
+            let (path, file_name) = get_name_and_split_path(&local_current_dir, &file);
+            
+            let new_record = analyser::FileRecord {
+                checksum: file_hash,
+                name: String::from(file_name),
+                path: path,
+            };
+
+            tx.send(new_record).expect("Could not send data!");
+        })
+    }
+
+    println!("Finished spanning. Dropping connection ...");
+    drop(tx);
+    
+    let mut records = Vec::<analyser::FileRecord>::new();
+    for r in rx.iter() {
+        records.push(r);
+    }
+
+    return records;
+}
+
+
+fn export_graph(graph: &analyser::GraphStorage) {
+    let mut f = File::create("example1.dot").unwrap();
+    let output = format!("{:?}", Dot::new(&graph.graph));
+
+    println!("Writing dot file with final results.");
+    match f.write_all(&output.as_bytes()){
+        Ok(_) => println!("All done. Have a nice day in the world."),
+        Err(e) => println!("Error writing to file {:?}", e),
+    }
+}
+
+
 fn main() {
     let config = App::new("rusty-index")
         .subcommand(SubCommand::with_name("parse"))
@@ -95,27 +165,13 @@ fn main() {
     };
     
     if let Some(_matches) = config.subcommand_matches("parse") {
+        let files = load_files_from_stdin();
+        println!("Processing {} files ...", files.len());
+
         let pool = ThreadPool::new(num_cpus::get());
         let current_dir = String::from(
             env::current_dir().unwrap().into_os_string().into_string().unwrap()
-
         );
-
-        let mut files = Vec::<String>::new();
-        loop {
-            let mut input = String::new();
-
-            stdin()
-                .read_line(&mut input)
-                .expect("failed to read from pipe");
-            input = input.trim().to_string();
-            if input == "" {
-                break;
-            }
-
-            files.push(input);
-        }
-        println!("Files to process: {:#?}", files);
 
         let (tx, rx) = channel();
 
@@ -157,13 +213,8 @@ fn main() {
         let res = data_source.fetch_sorted().unwrap();
         let mut graph = analyser::initialise_graph();
         graph.insert(res);
-        let mut f = File::create("example1.dot").unwrap();
-        let output = format!("{}", Dot::new(&graph.graph));
 
-        match f.write_all(&output.as_bytes()){
-            Ok(_) => println!("All done. Have a nice day in the world."),
-            Err(e) => println!("Error writing to file {:?}", e),
-        }
+        export_graph(&graph);
         
     } else if let Some(_matches) = config.subcommand_matches("virtual") {
         let pool = ThreadPool::new(num_cpus::get());
@@ -172,21 +223,8 @@ fn main() {
 
         );
 
-        let mut files = Vec::<String>::new();
-        loop {
-            let mut input = String::new();
-
-            stdin()
-                .read_line(&mut input)
-                .expect("failed to read from pipe");
-            input = input.trim().to_string();
-            if input == "" {
-                break;
-            }
-
-            files.push(input);
-        }
-        println!("Files to process: {:#?}", files);
+        let files = load_files_from_stdin();
+        println!("Processing {} files ...", files.len());
 
         let (tx, rx) = channel();
 
@@ -220,71 +258,19 @@ fn main() {
         println!("Dropped, now saving.");
         let mut graph = analyser::initialise_graph();
         graph.insert(records);
-        let mut f = File::create("example1.dot").unwrap();
-        let output = format!("{}", Dot::new(&graph.graph));
 
-        println!("Writing dot file with final results.");
-        match f.write_all(&output.as_bytes()){
-            Ok(_) => println!("All done. Have a nice day in the world."),
-            Err(e) => println!("Error writing to file {:?}", e),
-        }
+        export_graph(&graph);
 
         let final_res = graph.find_duplicates();
         println!("The final result: {:#?}", final_res);
 
-
     } else if let Some(_matches) = config.subcommand_matches("layered-virtual") {
-        let pool = ThreadPool::new(num_cpus::get());
-        let current_dir = String::from(
-            env::current_dir().unwrap().into_os_string().into_string().unwrap()
-
-        );
-
-        let mut files = Vec::<String>::new();
-        loop {
-            let mut input = String::new();
-
-            stdin()
-                .read_line(&mut input)
-                .expect("failed to read from pipe");
-            input = input.trim().to_string();
-            if input == "" {
-                break;
-            }
-
-            files.push(input);
-        }
-        println!("Files to process: {:#?}", files);
-
-        let (tx, rx) = channel();
-
-        for file in files {
-            let tx = tx.clone();
-            let local_current_dir = current_dir.clone();
-            pool.execute(move || {
-                let file_hash = hash_file(&file).unwrap();
-                println!("{:?} file has hash {:?}", file, file_hash);
-                let (path, file_name) = get_name_and_split_path(&local_current_dir, &file);
-                
-                let new_record = analyser::FileRecord {
-                    checksum: file_hash,
-                    name: String::from(file_name),
-                    path: path,
-                };
-
-                tx.send(new_record).expect("Could not send data!");
-            })
-        }
-
-        println!("Finished spanning. Dropping connection ...");
-        drop(tx);
+        let files = load_files_from_stdin();
+        println!("Processing {} files ...", files.len());
         
-        let mut records = Vec::<analyser::FileRecord>::new();
-        for r in rx.iter() {
-            records.push(r);
-        }
-
+        let records = process_into_file_records(files);
         println!("Dropped, now saving.");
+        
         // let mut graph = analyser::initialise_graph();
         // let mut root = graph.root;
         // graph.bulk_insert(&mut root, records);
@@ -297,15 +283,8 @@ fn main() {
         analyser::parallel_bulk_insert(first_ref, &mut root, records);
         let graph = local_ref.lock().unwrap();
         
-        let mut f = File::create("example1.dot").unwrap();
-        let output = format!("{}", Dot::new(&graph.graph));
-
-        println!("Writing dot file with final results.");
-        match f.write_all(&output.as_bytes()){
-            Ok(_) => println!("All done. Have a nice day in the world."),
-            Err(e) => println!("Error writing to file {:?}", e),
-        }
-
+        export_graph(&graph);
+        
         let final_res = graph.find_duplicates();
         println!("The final result: {:#?}", final_res);
         
