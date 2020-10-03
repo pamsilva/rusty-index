@@ -1,3 +1,4 @@
+
 extern crate rusqlite;
 
 use rusqlite::{Connection, Result};

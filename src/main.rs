@@ -25,6 +25,9 @@ use index_db::IndexStorage;
 mod analyser;
 use analyser::GraphStorageInterface;
 
+mod misc;
+use misc::to_file_record;
+use misc::to_index_record;
 
 const BUFFER_SIZE: usize = 1024;
 
@@ -44,24 +47,6 @@ fn hash_file(file_path: &String) -> Result<String> {
     }
 
     Ok(String::from(hasher.result_str()))
-}
-
-
-fn get_name_and_path(pwd: &String, file_name: &String) -> (String, String){
-    let mut relevant_file_name: String = file_name.clone();
-
-    if file_name.starts_with("./") {
-        let (_, new_file_name) = file_name.split_at(2);
-        relevant_file_name = String::from(new_file_name);
-    }
-    
-    let mut real_path = format!("{}/{}", pwd, relevant_file_name);
-    if file_name.starts_with("/") {
-        real_path = relevant_file_name;
-    }
-    
-    let components: Vec<&str> = real_path.rsplitn(2, '/').collect();
-    return (String::from(components[1]), String::from(components[0]));
 }
 
 
@@ -168,43 +153,11 @@ fn main() {
         let files = load_files_from_stdin();
         println!("Processing {} files ...", files.len());
 
-        let pool = ThreadPool::new(num_cpus::get());
-        let current_dir = String::from(
-            env::current_dir().unwrap().into_os_string().into_string().unwrap()
-        );
+        let records = process_into_file_records(files);
+        let storage_records = records.into_iter().map(|x| to_index_record(&x)).collect();
 
-        let (tx, rx) = channel();
-
-        for file in files {
-            let tx = tx.clone();
-            let local_current_dir = current_dir.clone();
-            pool.execute(move || {
-                let file_hash = hash_file(&file).unwrap();
-                println!("{:?} file has hash {:?}", file, file_hash);
-                let (path, file_name) = get_name_and_path(&local_current_dir, &file);
-                
-                let new_record = index_db::IndexRecord {
-                    id: 0,
-                    checksum: file_hash,
-                    name: String::from(file_name),
-                    path: String::from(path),
-                };
-
-                tx.send(new_record).expect("Could not send data!");
-            })
-        }
-
-        println!("Finished spanning. Dropping connection ...");
-        drop(tx);
-        
-        println!("Dropped, now saving.");
-        let mut records = Vec::<index_db::IndexRecord>::new();
-        for r in rx.iter() {
-            records.push(r);
-        }
-
-        println!("Inserting Data.");
-        match data_source.insert(&records) {
+        println!("Saving into the database.");
+        match data_source.insert(&storage_records) {
             Ok(_) => println!("Records successfully inserted"),
             Err(e) => println!("Error inserting records: {:?}", e),
         };
@@ -212,49 +165,18 @@ fn main() {
     } else if let Some(_matches) = config.subcommand_matches("generate") {
         let res = data_source.fetch_sorted().unwrap();
         let mut graph = analyser::initialise_graph();
-        graph.insert(res);
+        
+        let file_records_res = res.into_iter().map(|x| to_file_record(&x)).collect();
+        graph.insert(file_records_res);
 
         export_graph(&graph);
         
     } else if let Some(_matches) = config.subcommand_matches("virtual") {
-        let pool = ThreadPool::new(num_cpus::get());
-        let current_dir = String::from(
-            env::current_dir().unwrap().into_os_string().into_string().unwrap()
-
-        );
-
         let files = load_files_from_stdin();
         println!("Processing {} files ...", files.len());
 
-        let (tx, rx) = channel();
-
-        for file in files {
-            let tx = tx.clone();
-            let local_current_dir = current_dir.clone();
-            pool.execute(move || {
-                let file_hash = hash_file(&file).unwrap();
-                println!("{:?} file has hash {:?}", file, file_hash);
-                let (path, file_name) = get_name_and_path(&local_current_dir, &file);
-                
-                let new_record = index_db::IndexRecord {
-                    id: 0,
-                    checksum: file_hash,
-                    name: String::from(file_name),
-                    path: String::from(path),
-                };
-
-                tx.send(new_record).expect("Could not send data!");
-            })
-        }
-
-        println!("Finished spanning. Dropping connection ...");
-        drop(tx);
+        let records = process_into_file_records(files);
         
-        let mut records = Vec::<index_db::IndexRecord>::new();
-        for r in rx.iter() {
-            records.push(r);
-        }
-
         println!("Dropped, now saving.");
         let mut graph = analyser::initialise_graph();
         graph.insert(records);

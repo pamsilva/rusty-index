@@ -11,22 +11,21 @@ extern crate crypto;
 use crypto::md5::Md5;
 use crypto::digest::Digest;
 
-use crate::index_db;
-use index_db::IndexRecord;
-
-
-#[derive(Debug)]
-struct EdgeInfo {
-    node: NodeIndex,
-    tag: String,
-}
-
+use crate::misc;
+use misc::path_to_components;
 
 #[derive(Debug)]
 pub struct FileRecord {
     pub checksum: String,
     pub name: String,
     pub path: Vec<String>,
+}
+
+
+#[derive(Debug)]
+struct EdgeInfo {
+    node: NodeIndex,
+    tag: String,
 }
 
 
@@ -77,13 +76,12 @@ pub fn initialise_graph() -> GraphStorage {
 
 pub trait GraphStorageInterface {
     fn bulk_insert(&mut self, node: &mut NodeIndex, sorted_entries: Vec<FileRecord>);
-    fn insert(& mut self, sorted_entries: Vec<IndexRecord>);
+    fn insert(& mut self, sorted_entries: Vec<FileRecord>);
     fn find_duplicates(&self) -> HashMap<String, Vec<String>>;
 }
 
 
 impl GraphStorageInterface for GraphStorage {
-    
     fn bulk_insert(&mut self, node: &mut NodeIndex, sorted_entries: Vec<FileRecord>) {
         let mut local_contents = HashMap::<String, Vec<FileRecord>>::new();
 
@@ -168,12 +166,12 @@ impl GraphStorageInterface for GraphStorage {
 
     }
     
-    fn insert(& mut self, sorted_entries: Vec<IndexRecord>) {
+    fn insert(& mut self, sorted_entries: Vec<FileRecord>) {
         let mut cursor = self.root;
         let mut trace = VecDeque::<NodeIndex>::new();
         trace.push_front(cursor);
         for record in sorted_entries {
-            let path_elems: Vec<&str> = record.path.split("/").collect();
+            let path_elems = record.path.clone();
             let relevant_elements = &path_elems[1..]; 
 
             for elem in relevant_elements.iter().as_slice() {
@@ -181,12 +179,12 @@ impl GraphStorageInterface for GraphStorage {
                     continue;
                 }
                 
-                cursor = match is_linked(&self.graph, &cursor, *elem) {
+                cursor = match is_linked(&self.graph, &cursor, elem.as_str()) {
                     Some(res) => res,
                     None => {
                         let new_node = self.graph.add_node(GNode::DirNode {
-                            name: String::from(*elem),
-                            checksum: String::from("potato"),
+                            name: String::from(elem.clone()),
+                            checksum: String::from("IRRELEVANT_INITIAL_VALUE"),
                         });
                         self.graph.add_edge(cursor, new_node, ());
                         new_node
@@ -200,7 +198,7 @@ impl GraphStorageInterface for GraphStorage {
             let leaf = self.graph.add_node(GNode::FileLeaf {
                 name: String::from(record.name),
                 checksum: String::from(record.checksum),
-                id: record.id,
+                id: 0,
             });
             self.graph.add_edge(cursor, leaf, ());
             
@@ -443,39 +441,38 @@ fn calculate_hash(graph: &Graph::<GNode, ()>, cursor: &NodeIndex) -> String {
 #[cfg(test)]
 mod test {
     use super::*;
+
+    fn elem_from_path(path: String) -> Vec<String> {
+        path_to_components(&path)
+    }
     
     #[test]
     fn test_process_entries() {
-        let mut records = Vec::<IndexRecord>::new();
-        records.push(IndexRecord {
-            id: 1,
+        let mut records = Vec::<FileRecord>::new();
+        records.push(FileRecord {
             checksum: String::from("aaaaa"),
             name: String::from("aaaaa.txt"),
-            path: String::from("/some/"),
+            path: elem_from_path(String::from("/some/")),
         });
-        records.push(IndexRecord {
-            id: 1,
+        records.push(FileRecord {
             checksum: String::from("aaaaa"),
             name: String::from("aaaaa.txt"),
-            path: String::from("/some/location/"),
+            path: elem_from_path(String::from("/some/location/")),
         });
-        records.push(IndexRecord {
-            id: 1,
+        records.push(FileRecord {
             checksum: String::from("aaaaa"),
             name: String::from("aaaaa.txt"),
-            path: String::from("/some/other/"),
+            path: elem_from_path(String::from("/some/other/")),
         });
-        records.push(IndexRecord {
-            id: 1,
+        records.push(FileRecord {
             checksum: String::from("aaaaa"),
             name: String::from("aaaaa.txt"),
-            path: String::from("/some/yet-another/"),
+            path: elem_from_path(String::from("/some/yet-another/")),
         });
-        records.push(IndexRecord {
-            id: 1,
+        records.push(FileRecord {
             checksum: String::from("aabbb"),
             name: String::from("aabbb.txt"),
-            path: String::from("/some/location/"),
+            path: elem_from_path(String::from("/some/location/")),
         });
         
         let mut graph = initialise_graph();
@@ -486,13 +483,6 @@ mod test {
 
         assert_eq!(res.len(), 2);
         assert_eq!(res.get("aaaaa").unwrap().len(), 3);
-    }
-
-    fn elem_from_path(path: String) -> Vec<String> {
-        path.split('/')
-            .filter(|x| *x != "")
-            .map(|x| String::from(x))
-            .collect()
     }
 
     #[test]
