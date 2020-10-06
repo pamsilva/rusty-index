@@ -71,6 +71,8 @@ fn load_files_from_stdin() -> Vec::<String> {
 }
 
 
+// TODO: this should not need to guess the 'realpath', that must be done a priori.
+//       The input needs to be normalised beforehand and passed here just as a list of paths.
 fn process_into_file_records(file_list: Vec::<String>) -> Vec::<analyser::FileRecord> {
     let current_dir = String::from(
         env::current_dir().unwrap().into_os_string().into_string().unwrap()
