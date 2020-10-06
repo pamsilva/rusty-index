@@ -101,10 +101,7 @@ impl GraphStorageInterface for GraphStorage {
             match local_contents.get_mut(s) {
                 Some(vec) => {
                     let mut new_path = record.path.clone();
-                    let t = new_path.remove(0);
-                    if t.as_str() == "" && new_path.len() >= 1{
-                        new_path.remove(0);
-                    }
+                    new_path.remove(0);
                     
                     vec.push(FileRecord {
                         checksum: record.checksum,
@@ -300,11 +297,8 @@ pub fn parallel_bulk_insert(shared_graph: Arc<Mutex<GraphStorage>>, node: &mut N
         match local_contents.get_mut(s) {
             Some(vec) => {
                 let mut new_path = record.path.clone();
-                let t = new_path.remove(0);
-                if t.as_str() == "" && new_path.len() >= 1{
-                    new_path.remove(0);
-                }
-    
+                new_path.remove(0);
+                
                 vec.push(FileRecord {
                     checksum: record.checksum,
                     name: record.name,

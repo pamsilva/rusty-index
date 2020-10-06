@@ -28,9 +28,10 @@ use analyser::GraphStorageInterface;
 mod misc;
 use misc::to_file_record;
 use misc::to_index_record;
+use misc::get_name_and_split_path;
+
 
 const BUFFER_SIZE: usize = 1024;
-
 
 fn hash_file(file_path: &String) -> Result<String> {
     let mut file = File::open(&file_path)?;
@@ -48,20 +49,6 @@ fn hash_file(file_path: &String) -> Result<String> {
 
     Ok(String::from(hasher.result_str()))
 }
-
-
-fn get_name_and_split_path(pwd: &String, file_name: &String) -> (Vec<String>, String) {
-    let mut relevant_file_name: String = file_name.clone();
-
-    if file_name.starts_with("./") {
-        let (_, new_file_name) = file_name.split_at(2);
-        relevant_file_name = String::from(new_file_name);
-    }
-    
-    let components = pwd.split('/').map(|x| String::from(x)).collect();
-    return (components, relevant_file_name);
-}
-
 
 
 fn load_files_from_stdin() -> Vec::<String> {
@@ -88,6 +75,7 @@ fn process_into_file_records(file_list: Vec::<String>) -> Vec::<analyser::FileRe
     let current_dir = String::from(
         env::current_dir().unwrap().into_os_string().into_string().unwrap()
     );
+    
     let pool = ThreadPool::new(num_cpus::get());
     let (tx, rx) = channel();
 

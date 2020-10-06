@@ -17,6 +17,7 @@ pub fn components_to_path(components: &Vec<String>) -> String {
     format!("/{}/", components.join("/"))
 }
 
+
 pub fn to_index_record(file_record: &FileRecord) -> IndexRecord {
     IndexRecord {
         id: 0,
@@ -33,6 +34,25 @@ pub fn to_file_record(index_record: &IndexRecord) -> FileRecord {
         name: index_record.name.clone(),
         path: path_to_components(&index_record.path),
     }
+}
+
+
+pub fn get_name_and_split_path(pwd: &String, file_name: &String) -> (Vec<String>, String) {
+    let mut relevant_file_name: String = file_name.clone();
+
+    if file_name.starts_with("./") {
+        let (_, new_file_name) = file_name.split_at(2);
+        relevant_file_name = String::from(new_file_name);
+    }
+
+    let mut real_path = format!("{}/{}", pwd, relevant_file_name);
+    if file_name.starts_with("/") {
+        real_path = relevant_file_name;
+    }
+
+    let parts: Vec<String> = real_path.rsplitn(2, '/').map(|x| String::from(x)).collect();
+    let path_components = path_to_components(&parts[1]);
+    return (path_components, parts[0].clone());
 }
 
 
