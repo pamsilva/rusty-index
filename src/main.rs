@@ -1,4 +1,3 @@
-use std::env;
 use std::fs::File;
 use std::io::prelude::*;
 use std::io::{Result, stdin};
@@ -29,6 +28,7 @@ mod misc;
 use misc::to_file_record;
 use misc::to_index_record;
 use misc::get_name_and_split_path;
+use misc::process_file_paths;
 
 
 const BUFFER_SIZE: usize = 1024;
@@ -71,23 +71,18 @@ fn load_files_from_stdin() -> Vec::<String> {
 }
 
 
-// TODO: this should not need to guess the 'realpath', that must be done a priori.
-//       The input needs to be normalised beforehand and passed here just as a list of paths.
 fn process_into_file_records(file_list: Vec::<String>) -> Vec::<analyser::FileRecord> {
-    let current_dir = String::from(
-        env::current_dir().unwrap().into_os_string().into_string().unwrap()
-    );
-    
     let pool = ThreadPool::new(num_cpus::get());
     let (tx, rx) = channel();
 
     for file in file_list {
         let tx = tx.clone();
-        let local_current_dir = current_dir.clone();
+        
         pool.execute(move || {
             let file_hash = hash_file(&file).unwrap();
-            println!("{:?} file has hash {:?}", file, file_hash);
-            let (path, file_name) = get_name_and_split_path(&local_current_dir, &file);
+            // println!("{:?} file has hash {:?}", file, file_hash);
+
+            let (path, file_name) = get_name_and_split_path(&file);
             
             let new_record = analyser::FileRecord {
                 checksum: file_hash,
@@ -108,6 +103,15 @@ fn process_into_file_records(file_list: Vec::<String>) -> Vec::<analyser::FileRe
     }
 
     return records;
+}
+
+
+fn load_and_process_files() -> Vec::<analyser::FileRecord> {
+    let raw_files = load_files_from_stdin();
+    let files = process_file_paths(raw_files);
+    
+    println!("Processing {} files ...", files.len());
+    return process_into_file_records(files);
 }
 
 
@@ -140,10 +144,7 @@ fn main() {
     };
     
     if let Some(_matches) = config.subcommand_matches("parse") {
-        let files = load_files_from_stdin();
-        println!("Processing {} files ...", files.len());
-
-        let records = process_into_file_records(files);
+        let records = load_and_process_files();
         let storage_records = records.into_iter().map(|x| to_index_record(&x)).collect();
 
         println!("Saving into the database.");
@@ -162,10 +163,7 @@ fn main() {
         export_graph(&graph);
         
     } else if let Some(_matches) = config.subcommand_matches("virtual") {
-        let files = load_files_from_stdin();
-        println!("Processing {} files ...", files.len());
-
-        let records = process_into_file_records(files);
+        let records = load_and_process_files();
         
         println!("Dropped, now saving.");
         let mut graph = analyser::initialise_graph();
@@ -177,10 +175,7 @@ fn main() {
         println!("The final result: {:#?}", final_res);
 
     } else if let Some(_matches) = config.subcommand_matches("layered-virtual") {
-        let files = load_files_from_stdin();
-        println!("Processing {} files ...", files.len());
-        
-        let records = process_into_file_records(files);
+        let records = load_and_process_files();
         println!("Dropped, now saving.");
         
         // let mut graph = analyser::initialise_graph();
