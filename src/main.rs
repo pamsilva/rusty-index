@@ -1,4 +1,5 @@
-use std::fs::File;
+use std::fs::{File, metadata};
+use std::time::SystemTime;
 use std::io::prelude::*;
 use std::io::{Result, stdin};
 use std::sync::mpsc::channel;
@@ -80,9 +81,16 @@ fn process_into_file_records(file_list: Vec::<String>) -> Vec::<analyser::FileRe
         
         pool.execute(move || {
             let file_hash = hash_file(&file).unwrap();
-            // println!("{:?} file has hash {:?}", file, file_hash);
 
             let (path, file_name) = get_name_and_split_path(&file);
+            let metadata = match(metadata(&file)) {
+                Ok(m_tada) => m_tada,
+                Err(e) => panic!("Can't get metadata for file {:?}; {:?}", &file, e),
+            };
+            let timestamp = match(metadata.modified()) {
+                Ok(time) => time,
+                Err(e) => SystemTime::now(),
+            };
             
             let new_record = analyser::FileRecord {
                 checksum: file_hash,
