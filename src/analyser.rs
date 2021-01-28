@@ -366,7 +366,7 @@ pub fn parallel_bulk_insert(shared_graph: Arc<Mutex<GraphStorage>>, node: &mut N
 
     *node_data = GNode::DirNode {
         name: node_name.to_string(),
-        checksum: checksum,
+        checksum,
     }
     
 }
