@@ -30,8 +30,8 @@ use misc::to_index_record;
 use misc::get_name_and_split_path;
 use misc::process_file_paths;
 
-
 const BUFFER_SIZE: usize = 1024;
+
 
 fn hash_file(file_path: &String) -> Result<String> {
     let mut file = File::open(&file_path)?;
@@ -199,3 +199,4 @@ fn main() {
         println!("You need to either parse or generate, otherwise there is nothing to do.");
     }
 }
+
