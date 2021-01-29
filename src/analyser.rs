@@ -4,6 +4,9 @@ use std::collections::HashMap;
 use std::thread;
 use std::sync::{Arc, Mutex};
 
+extern crate chrono;
+use chrono::DateTime;
+
 extern crate petgraph;
 use petgraph::graph::{Graph, NodeIndex};
 
@@ -19,6 +22,7 @@ pub struct FileRecord {
     pub checksum: String,
     pub name: String,
     pub path: Vec<String>,
+    pub modified: DateTime,
 }
 
 

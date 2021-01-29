@@ -4,6 +4,9 @@ use std::io::prelude::*;
 use std::io::{Result, stdin};
 use std::sync::mpsc::channel;
 
+extern crate chrono;
+use chrono::DateTime;
+
 extern crate num_cpus;
 
 extern crate threadpool;
@@ -96,6 +99,7 @@ fn process_into_file_records(file_list: Vec::<String>) -> Vec::<analyser::FileRe
                 checksum: file_hash,
                 name: String::from(file_name),
                 path: path,
+                modified: DateTime(timestamp),
             };
 
             tx.send(new_record).expect("Could not send data!");

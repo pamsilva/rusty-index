@@ -13,3 +13,5 @@ num_cpus = "*"
 threadpool = "*"
 petgraph = "*"
 clap = "*"
+chrono = "*"
+
