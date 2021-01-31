@@ -38,7 +38,6 @@ fn main() {
         .subcommand(SubCommand::with_name("parse"))
         .subcommand(SubCommand::with_name("generate"))
         .subcommand(SubCommand::with_name("virtual"))
-        .subcommand(SubCommand::with_name("layered-virtual"))
         .get_matches();
 
     let file_name = String::from("index.db");
@@ -68,20 +67,11 @@ fn main() {
 	
         graph.bulk_insert(file_records_res);
         export_graph(&graph);
-        
-    } else if let Some(_matches) = config.subcommand_matches("virtual") {
-        let records = load_and_process_files();
-        
-        println!("Dropped, now saving.");
-        let mut graph = analyser::initialise_graph();
-        graph.insert(records);
 
-        export_graph(&graph);
-
-        let final_res = graph.find_duplicates();
+	let final_res = graph.find_duplicates();
         println!("The final result: {:#?}", final_res);
-
-    } else if let Some(_matches) = config.subcommand_matches("layered-virtual") {
+	
+    } else if let Some(_matches) = config.subcommand_matches("virtual") {
         let records = load_and_process_files();
         println!("Dropped, now saving.");
         

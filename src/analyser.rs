@@ -79,7 +79,6 @@ pub fn initialise_graph() -> GraphStorage {
 pub trait GraphStorageInterface {
     fn _bulk_insert(&mut self, node: &mut NodeIndex, sorted_entries: Vec<FileRecord>);
     fn bulk_insert(&mut self, sorted_entries: Vec<FileRecord>);
-    fn insert(& mut self, sorted_entries: Vec<FileRecord>);
     fn find_duplicates(&self) -> HashMap<String, Vec<String>>;
 }
 
@@ -172,64 +171,6 @@ impl GraphStorageInterface for GraphStorage {
 	self._bulk_insert(&mut self.root.clone(), sorted_entries)
     }
     
-    fn insert(& mut self, sorted_entries: Vec<FileRecord>) {
-        let mut cursor = self.root;
-        let mut trace = VecDeque::<NodeIndex>::new();
-        trace.push_front(cursor);
-        for record in sorted_entries {
-            let path_elems = record.path.clone();
-            let relevant_elements = &path_elems[1..]; 
-
-            for elem in relevant_elements.iter().as_slice() {
-                if *elem == "" {
-                    continue;
-                }
-                
-                cursor = match is_linked(&self.graph, &cursor, elem.as_str()) {
-                    Some(res) => res,
-                    None => {
-                        let new_node = self.graph.add_node(GNode::DirNode {
-                            name: String::from(elem.clone()),
-                            checksum: String::from("IRRELEVANT_INITIAL_VALUE"),
-                        });
-                        self.graph.add_edge(cursor, new_node, ());
-                        new_node
-                    },
-                };
-
-                trace.push_front(cursor);
-            }
-
-            
-            let leaf = self.graph.add_node(GNode::FileLeaf {
-                name: String::from(record.name),
-                checksum: String::from(record.checksum),
-                id: 0,
-            });
-            self.graph.add_edge(cursor, leaf, ());
-            
-            for elem in trace.iter() {
-                let checksum = calculate_hash(&self.graph, &elem); 
-
-                let node = self.graph.node_weight_mut(*elem).unwrap();
-                let node_name = match node {
-                    GNode::DirNode {name, checksum: _2} => name,
-                    GNode::FileLeaf {name: _1, checksum: _2, id: _3} => panic!(
-                        "LeafNode cannot be part of the trace. It should be impossible"
-                    ),
-                };
-
-                *node = GNode::DirNode {
-                    name: node_name.to_string(),
-                    checksum,
-                }
-            }
-            
-            cursor = self.root;
-        }
-
-    }
-
     fn find_duplicates(&self) -> HashMap<String, Vec<String>> {
         let mut duplicates = HashMap::<String, Vec<String>>::new();
         let mut edges = VecDeque::<EdgeInfo>::new();
@@ -464,50 +405,6 @@ mod test {
 	return DateTime::<Utc>::from_utc(NaiveDateTime::new(d, t), Utc);
     }
     
-    #[test]
-    fn test_process_entries() {
-        let mut records = Vec::<FileRecord>::new();
-        records.push(FileRecord {
-            checksum: String::from("aaaaa"),
-            name: String::from("aaaaa.txt"),
-            path: elem_from_path(String::from("/some/")),
-	    modified: mock_date_time()
-        });
-        records.push(FileRecord {
-            checksum: String::from("aaaaa"),
-            name: String::from("aaaaa.txt"),
-            path: elem_from_path(String::from("/some/location/")),
-	    modified: mock_date_time()
-        });
-        records.push(FileRecord {
-            checksum: String::from("aaaaa"),
-            name: String::from("aaaaa.txt"),
-            path: elem_from_path(String::from("/some/other/")),
-	    modified: mock_date_time()
-        });
-        records.push(FileRecord {
-            checksum: String::from("aaaaa"),
-            name: String::from("aaaaa.txt"),
-            path: elem_from_path(String::from("/some/yet-another/")),
-	    modified: mock_date_time()
-        });
-        records.push(FileRecord {
-            checksum: String::from("aabbb"),
-            name: String::from("aabbb.txt"),
-            path: elem_from_path(String::from("/some/location/")),
-	    modified: mock_date_time()
-        });
-        
-        let mut graph = initialise_graph();
-        graph.insert(records);
-        let res = graph.find_duplicates();
-        
-        println!("{:#?}", res);
-
-        assert_eq!(res.len(), 2);
-        assert_eq!(res.get("aaaaa").unwrap().len(), 3);
-    }
-
     #[test]
     fn test_bulk_insert() {
         let mut records = Vec::<FileRecord>::new();
