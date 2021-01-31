@@ -1,9 +1,9 @@
-
 extern crate rusqlite;
-
-use rusqlite::{Connection, Result};
 use rusqlite::{params, NO_PARAMS};
+use rusqlite::{Connection, Result};
 
+extern crate chrono;
+use chrono::{DateTime, SecondsFormat, Utc};
 
 #[derive(Debug)]
 pub struct IndexRecord {
@@ -11,27 +11,28 @@ pub struct IndexRecord {
     pub checksum: String,
     pub name: String,
     pub path: String,
+    pub modified: DateTime<Utc>,
 }
-
 
 pub trait IndexStorage {
     fn create(&self) -> Result<()>;
-    fn insert(&self, arr: &Vec<IndexRecord>) -> Result<()> ;
+    fn insert(&self, arr: &Vec<IndexRecord>) -> Result<()>;
     fn select(&self, name: String) -> Result<Vec<IndexRecord>>;
     fn fetch_sorted(&self) -> Result<Vec<IndexRecord>>;
 }
 
-
 pub struct SQLite3 {
     pub conn: Connection,
 }
-
 
 pub fn initalise_db(file_name: &String) -> Result<SQLite3> {
     Ok(SQLite3 {
         conn: Connection::open(file_name.as_str())?,
     })
 }
+
+
+
 
 
 impl IndexStorage for SQLite3 {
@@ -41,8 +42,8 @@ impl IndexStorage for SQLite3 {
              id integer primary key autoincrement,
              checksum text not null,
              name text not null,
-             path text             
-         )",
+             path text,
+             modified text)",
             NO_PARAMS,
         )?;
 
@@ -52,8 +53,8 @@ impl IndexStorage for SQLite3 {
     fn insert(&self, arr: &Vec<IndexRecord>) -> Result<()> {
         for record in arr {
             self.conn.execute(
-                "INSERT INTO index_records (checksum, name, path) values (?1, ?2, ?3)",
-                params![record.checksum, record.name, record.path]
+                "INSERT INTO index_records (checksum, name, path, modified) values (?1, ?2, ?3, ?4)",
+                params![record.checksum, record.name, record.path, record.modified.to_rfc3339_opts(SecondsFormat::Millis, true)]
             )?;
         }
 
@@ -64,17 +65,19 @@ impl IndexStorage for SQLite3 {
         let prepared_name = format!("%{}%", name);
 
         let mut stmt = self.conn.prepare(
-            "SELECT i.id, i.checksum, i.name, i.path
+            "SELECT i.id, i.checksum, i.name, i.path, i.modified
              FROM index_records i
-             WHERE i.name LIKE $1 ;"
+             WHERE i.name LIKE $1 ;",
         )?;
 
         let records = stmt.query_map(params![prepared_name], |row| {
-            Ok(IndexRecord {
+	    let str_modifeid: String = row.get(4)?;
+	    Ok(IndexRecord {
                 id: row.get(0)?,
                 checksum: row.get(1)?,
                 name: row.get(2)?,
                 path: row.get(3)?,
+		modified: DateTime::parse_from_rfc3339(str_modifeid.as_str()).expect("Failed to parse date from db").into(),
             })
         })?;
 
@@ -84,17 +87,19 @@ impl IndexStorage for SQLite3 {
 
     fn fetch_sorted(&self) -> Result<Vec<IndexRecord>> {
         let mut stmt = self.conn.prepare(
-            "SELECT i.id, i.checksum, i.name, i.path
+            "SELECT i.id, i.checksum, i.name, i.path, i.modified
              FROM index_records i
-             ORDER BY i.path, i.name;"
+             ORDER BY i.path, i.name;",
         )?;
 
         let records = stmt.query_map(NO_PARAMS, |row| {
-            Ok(IndexRecord {
+	    let str_modifeid: String = row.get(4)?;
+	    Ok(IndexRecord {
                 id: row.get(0)?,
                 checksum: row.get(1)?,
                 name: row.get(2)?,
                 path: row.get(3)?,
+		modified: DateTime::parse_from_rfc3339(str_modifeid.as_str()).expect("Failed to parse date from db").into(),
             })
         })?;
 

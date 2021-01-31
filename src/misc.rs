@@ -26,6 +26,7 @@ pub fn to_index_record(file_record: &FileRecord) -> IndexRecord {
         checksum: file_record.checksum.clone(),
         name: file_record.name.clone(),
         path: components_to_path(&file_record.path),
+	modified: file_record.modified.clone(),
     }
 }
 
@@ -35,6 +36,7 @@ pub fn to_file_record(index_record: &IndexRecord) -> FileRecord {
         checksum: index_record.checksum.clone(),
         name: index_record.name.clone(),
         path: path_to_components(&index_record.path),
+	modified: index_record.modified.clone(),
     }
 }
 
@@ -72,6 +74,15 @@ pub fn process_file_paths(raw_file_list: Vec::<String>) -> Vec::<String> {
 #[cfg(test)]
 mod test {
     use super::*;
+
+    use chrono::{DateTime, NaiveDate, NaiveTime, NaiveDateTime, Utc};
+
+    fn mock_date_time() -> DateTime<Utc> {
+	let d = NaiveDate::from_ymd(2015, 6, 3);
+	let t = NaiveTime::from_hms_milli(12, 34, 56, 789);
+
+	return DateTime::<Utc>::from_utc(NaiveDateTime::new(d, t), Utc);
+    }
     
     #[test]
     fn test_to_file_record() {
@@ -80,6 +91,7 @@ mod test {
             checksum: String::from("aaaaa"),
             name: String::from("aaaaa.txt"),
             path: String::from("/some/"),
+	    modified: mock_date_time(),
         };
 
         let res = to_file_record(&example);
@@ -96,6 +108,7 @@ mod test {
             checksum: String::from("aaaaa"),
             name: String::from("aaaaa.txt"),
             path: vec![String::from("some")],
+	    modified: mock_date_time(),
         };
 
         let res = to_index_record(&example);

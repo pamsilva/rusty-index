@@ -5,7 +5,7 @@ use std::thread;
 use std::sync::{Arc, Mutex};
 
 extern crate chrono;
-use chrono::DateTime;
+use chrono::{DateTime, Utc};
 
 extern crate petgraph;
 use petgraph::graph::{Graph, NodeIndex};
@@ -14,15 +14,13 @@ extern crate crypto;
 use crypto::md5::Md5;
 use crypto::digest::Digest;
 
-use crate::misc;
-use misc::path_to_components;
 
 #[derive(Debug)]
 pub struct FileRecord {
     pub checksum: String,
     pub name: String,
     pub path: Vec<String>,
-    pub modified: DateTime,
+    pub modified: DateTime<Utc>,
 }
 
 
@@ -79,14 +77,15 @@ pub fn initialise_graph() -> GraphStorage {
 
 
 pub trait GraphStorageInterface {
-    fn bulk_insert(&mut self, node: &mut NodeIndex, sorted_entries: Vec<FileRecord>);
+    fn _bulk_insert(&mut self, node: &mut NodeIndex, sorted_entries: Vec<FileRecord>);
+    fn bulk_insert(&mut self, sorted_entries: Vec<FileRecord>);
     fn insert(& mut self, sorted_entries: Vec<FileRecord>);
     fn find_duplicates(&self) -> HashMap<String, Vec<String>>;
 }
 
 
 impl GraphStorageInterface for GraphStorage {
-    fn bulk_insert(&mut self, node: &mut NodeIndex, sorted_entries: Vec<FileRecord>) {
+    fn _bulk_insert(&mut self, node: &mut NodeIndex, sorted_entries: Vec<FileRecord>) {
         let mut local_contents = HashMap::<String, Vec<FileRecord>>::new();
 
         for record in sorted_entries {
@@ -110,7 +109,8 @@ impl GraphStorageInterface for GraphStorage {
                     vec.push(FileRecord {
                         checksum: record.checksum,
                         name: record.name,
-                        path: new_path
+                        path: new_path,
+			modified: record.modified,
                     });
                 }
                 None => {
@@ -121,7 +121,8 @@ impl GraphStorageInterface for GraphStorage {
                     new_vec.push(FileRecord {
                         checksum: record.checksum,
                         name: record.name,
-                        path: new_path
+                        path: new_path,
+			modified: record.modified,
                     });
                     local_contents.insert(String::from(s), new_vec);
                 }
@@ -147,7 +148,7 @@ impl GraphStorageInterface for GraphStorage {
                 },
             };
 
-            self.bulk_insert(&mut cursor, value);
+            self._bulk_insert(&mut cursor, value);
         }
 
         // update current node's hash for all of its contents.
@@ -162,9 +163,13 @@ impl GraphStorageInterface for GraphStorage {
 
         *node_data = GNode::DirNode {
             name: node_name.to_string(),
-            checksum: checksum,
+            checksum
         }
 
+    }
+
+    fn bulk_insert(&mut self, sorted_entries: Vec<FileRecord>) {
+	self._bulk_insert(&mut self.root.clone(), sorted_entries)
     }
     
     fn insert(& mut self, sorted_entries: Vec<FileRecord>) {
@@ -216,7 +221,7 @@ impl GraphStorageInterface for GraphStorage {
 
                 *node = GNode::DirNode {
                     name: node_name.to_string(),
-                    checksum: checksum,
+                    checksum,
                 }
             }
             
@@ -306,7 +311,8 @@ pub fn parallel_bulk_insert(shared_graph: Arc<Mutex<GraphStorage>>, node: &mut N
                 vec.push(FileRecord {
                     checksum: record.checksum,
                     name: record.name,
-                    path: new_path
+                    path: new_path,
+		    modified: record.modified,
                 });
             }
             None => {
@@ -317,7 +323,8 @@ pub fn parallel_bulk_insert(shared_graph: Arc<Mutex<GraphStorage>>, node: &mut N
                 new_vec.push(FileRecord {
                     checksum: record.checksum,
                     name: record.name,
-                    path: new_path
+                    path: new_path,
+		    modified: record.modified,
                 });
                 local_contents.insert(String::from(s), new_vec);
             }
@@ -440,8 +447,21 @@ fn calculate_hash(graph: &Graph::<GNode, ()>, cursor: &NodeIndex) -> String {
 mod test {
     use super::*;
 
+    use chrono::{DateTime, NaiveDate, NaiveTime, NaiveDateTime, Utc};
+
+    use crate::misc;
+    use misc::path_to_components;
+
+    
     fn elem_from_path(path: String) -> Vec<String> {
         path_to_components(&path)
+    }
+
+    fn mock_date_time() -> DateTime<Utc> {
+	let d = NaiveDate::from_ymd(2015, 6, 3);
+	let t = NaiveTime::from_hms_milli(12, 34, 56, 789);
+
+	return DateTime::<Utc>::from_utc(NaiveDateTime::new(d, t), Utc);
     }
     
     #[test]
@@ -451,26 +471,31 @@ mod test {
             checksum: String::from("aaaaa"),
             name: String::from("aaaaa.txt"),
             path: elem_from_path(String::from("/some/")),
+	    modified: mock_date_time()
         });
         records.push(FileRecord {
             checksum: String::from("aaaaa"),
             name: String::from("aaaaa.txt"),
             path: elem_from_path(String::from("/some/location/")),
+	    modified: mock_date_time()
         });
         records.push(FileRecord {
             checksum: String::from("aaaaa"),
             name: String::from("aaaaa.txt"),
             path: elem_from_path(String::from("/some/other/")),
+	    modified: mock_date_time()
         });
         records.push(FileRecord {
             checksum: String::from("aaaaa"),
             name: String::from("aaaaa.txt"),
             path: elem_from_path(String::from("/some/yet-another/")),
+	    modified: mock_date_time()
         });
         records.push(FileRecord {
             checksum: String::from("aabbb"),
             name: String::from("aabbb.txt"),
             path: elem_from_path(String::from("/some/location/")),
+	    modified: mock_date_time()
         });
         
         let mut graph = initialise_graph();
@@ -490,31 +515,36 @@ mod test {
             checksum: String::from("aaaaa"),
             name: String::from("aaaaa.txt"),
             path: elem_from_path(String::from("/some/")),
+	    modified: mock_date_time()
         });
         records.push(FileRecord {
             checksum: String::from("aaaaa"),
             name: String::from("aaaaa.txt"),
             path: elem_from_path(String::from("/some/location/")),
+	    modified: mock_date_time()
         });
         records.push(FileRecord {
             checksum: String::from("aaaaa"),
             name: String::from("aaaaa.txt"),
             path: elem_from_path(String::from("/some/other/")),
+	    modified: mock_date_time()
         });
         records.push(FileRecord {
             checksum: String::from("aaaaa"),
             name: String::from("aaaaa.txt"),
             path: elem_from_path(String::from("/some/yet-another/")),
+	    modified: mock_date_time()
         });
         records.push(FileRecord {
             checksum: String::from("aabbb"),
             name: String::from("aabbb.txt"),
             path: elem_from_path(String::from("/some/location/")),
+	    modified: mock_date_time()
         });
         
         let mut graph = initialise_graph();
         let mut root = graph.root;
-        graph.bulk_insert(&mut root, records);
+        graph._bulk_insert(&mut root, records);
         
         let res = graph.find_duplicates();
         
@@ -531,26 +561,31 @@ mod test {
             checksum: String::from("aaaaa"),
             name: String::from("aaaaa.txt"),
             path: elem_from_path(String::from("/some/")),
+	    modified: mock_date_time()
         });
         records.push(FileRecord {
             checksum: String::from("aaaaa"),
             name: String::from("aaaaa.txt"),
             path: elem_from_path(String::from("/some/location/")),
+	    modified: mock_date_time()
         });
         records.push(FileRecord {
             checksum: String::from("aaaaa"),
             name: String::from("aaaaa.txt"),
             path: elem_from_path(String::from("/some/other/")),
+	    modified: mock_date_time()
         });
         records.push(FileRecord {
             checksum: String::from("aaaaa"),
             name: String::from("aaaaa.txt"),
             path: elem_from_path(String::from("/some/yet-another/")),
+	    modified: mock_date_time()
         });
         records.push(FileRecord {
             checksum: String::from("aabbb"),
             name: String::from("aabbb.txt"),
             path: elem_from_path(String::from("/some/location/")),
+	    modified: mock_date_time()
         });
         
         let graph_ref = create_shared_graph();
@@ -568,4 +603,3 @@ mod test {
         assert_eq!(res.get("aaaaa").unwrap().len(), 3);
     }
 }
-

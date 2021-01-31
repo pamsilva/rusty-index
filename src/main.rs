@@ -5,7 +5,7 @@ use std::io::{Result, stdin};
 use std::sync::mpsc::channel;
 
 extern crate chrono;
-use chrono::DateTime;
+use chrono::{DateTime, Utc};
 
 extern crate num_cpus;
 
@@ -23,10 +23,10 @@ extern crate clap;
 use clap::{App, SubCommand};
 
 mod index_db;
-use index_db::IndexStorage;
+use index_db::{IndexStorage, IndexRecord};
 
 mod analyser;
-use analyser::GraphStorageInterface;
+use analyser::{GraphStorageInterface, FileRecord};
 
 mod misc;
 use misc::to_file_record;
@@ -76,7 +76,10 @@ fn load_files_from_stdin() -> Vec::<String> {
 
 
 fn process_into_file_records(file_list: Vec::<String>) -> Vec::<analyser::FileRecord> {
-    let pool = ThreadPool::new(num_cpus::get());
+    let n_cpus = num_cpus::get();
+    let pool = ThreadPool::new(n_cpus);
+    println!("Running with {} threads ...", n_cpus);
+    
     let (tx, rx) = channel();
 
     for file in file_list {
@@ -84,22 +87,24 @@ fn process_into_file_records(file_list: Vec::<String>) -> Vec::<analyser::FileRe
         
         pool.execute(move || {
             let file_hash = hash_file(&file).unwrap();
-
+	    // println!("processing {} ...", file);
+	    
             let (path, file_name) = get_name_and_split_path(&file);
-            let metadata = match(metadata(&file)) {
+            let metadata = match metadata(&file) {
                 Ok(m_tada) => m_tada,
                 Err(e) => panic!("Can't get metadata for file {:?}; {:?}", &file, e),
             };
-            let timestamp = match(metadata.modified()) {
+            let timestamp = match metadata.modified() {
                 Ok(time) => time,
-                Err(e) => SystemTime::now(),
+                Err(_e) => SystemTime::now(),
             };
-            
+
+	    let modified: DateTime<Utc> = timestamp.into();
             let new_record = analyser::FileRecord {
                 checksum: file_hash,
                 name: String::from(file_name),
-                path: path,
-                modified: DateTime(timestamp),
+                path,
+                modified,
             };
 
             tx.send(new_record).expect("Could not send data!");
@@ -157,9 +162,9 @@ fn main() {
     
     if let Some(_matches) = config.subcommand_matches("parse") {
         let records = load_and_process_files();
-        let storage_records = records.into_iter().map(|x| to_index_record(&x)).collect();
+        let storage_records: Vec<IndexRecord> = records.into_iter().map(|x| to_index_record(&x)).collect();
 
-        println!("Saving into the database.");
+        println!("Saving {} into the database.", storage_records.len());
         match data_source.insert(&storage_records) {
             Ok(_) => println!("Records successfully inserted"),
             Err(e) => println!("Error inserting records: {:?}", e),
@@ -169,9 +174,10 @@ fn main() {
         let res = data_source.fetch_sorted().unwrap();
         let mut graph = analyser::initialise_graph();
         
-        let file_records_res = res.into_iter().map(|x| to_file_record(&x)).collect();
-        graph.insert(file_records_res);
-
+        let file_records_res: Vec<FileRecord> = res.into_iter().map(|x| to_file_record(&x)).collect();
+	println!("Processing {} from the database.", file_records_res.len());
+	
+        graph.bulk_insert(file_records_res);
         export_graph(&graph);
         
     } else if let Some(_matches) = config.subcommand_matches("virtual") {
