@@ -15,7 +15,7 @@ use crypto::md5::Md5;
 use crypto::digest::Digest;
 
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct FileRecord {
     pub checksum: String,
     pub name: String,
@@ -172,7 +172,7 @@ impl GraphStorageInterface for GraphStorage {
     }
     
     fn find_duplicates(&self) -> HashMap<String, Vec<String>> {
-        let mut duplicates = HashMap::<String, Vec<String>>::new();
+	let mut duplicates = HashMap::<String, Vec<String>>::new();
         let mut edges = VecDeque::<EdgeInfo>::new();
         edges.push_back(EdgeInfo {
             node: self.root,
@@ -203,7 +203,12 @@ impl GraphStorageInterface for GraphStorage {
 
                         match duplicates.get_mut(checksum) {
                             Some(vec) => {
-                                vec.push(path);
+                                vec.push(path.clone());
+				
+                                edges.push_back(EdgeInfo {
+                                    node: elem,
+                                    tag: path,
+                                });
                             },
                             None => {
                                 let mut new_vec = Vec::<String>::new();
