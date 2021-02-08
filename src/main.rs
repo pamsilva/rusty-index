@@ -44,7 +44,11 @@ fn display_result(duplicates: &HashMap<String, Vec<String>>) {
 	println!("{} {}", "Hash :".red(), hash.magenta());
 
 	for p in paths {
-	    println!("\t{}", p.blue().bold());
+	    if p.ends_with("/") {
+		println!("\t {} \t \u{1F4C2}", p.blue().bold());
+	    } else {
+		println!("\t{}", p.blue().bold());
+	    }
 	}
 
 	println!("");

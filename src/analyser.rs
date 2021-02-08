@@ -186,7 +186,7 @@ impl GraphStorageInterface for GraphStorage {
                 match self.graph.node_weight(elem).unwrap() {
                     
                     GNode::FileLeaf {name, checksum, id: _} => {
-                        let path = String::from(format!("{}/{}", pivot.tag.as_str(), name.as_str()));
+                        let path = String::from(format!("{}{}", pivot.tag.as_str(), name.as_str()));
 
                         match duplicates.get_mut(checksum) {
                             Some(vec) => {vec.push(path)},
@@ -199,7 +199,7 @@ impl GraphStorageInterface for GraphStorage {
                     },
                     
                     GNode::DirNode {name, checksum} => {
-                        let path = String::from(format!("{}/{}", pivot.tag.as_str(), name.as_str()));
+                        let path = String::from(format!("{}{}/", pivot.tag.as_str(), name.as_str()));
 
                         match duplicates.get_mut(checksum) {
                             Some(vec) => {
