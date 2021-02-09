@@ -83,6 +83,7 @@ fn main() {
             Ok(_) => println!("Records successfully inserted"),
             Err(e) => println!("Error inserting records: {:?}", e),
         };
+
     } else if let Some(_matches) = config.subcommand_matches("generate") {
         let res = data_source.fetch_sorted().unwrap();
         let mut graph = analyser::initialise_graph();
@@ -95,7 +96,8 @@ fn main() {
         export_graph(&graph);
 
         let final_res = graph.find_duplicates();
-        println!("The final result: {:#?}", final_res);
+	display_result(&final_res);
+
     } else if let Some(_matches) = config.subcommand_matches("virtual") {
         let records = load_and_process_files();
         println!("Dropped, now saving.");
@@ -116,21 +118,18 @@ fn main() {
 
         let final_res = graph.find_duplicates();
         println!("The final result: {:#?}", final_res);
+
     } else if let Some(_matches) = config.subcommand_matches("baby-steps") {
-        // get the list of files from scanning a target path
 	let path = String::from(
 	    _matches.value_of("path").unwrap_or(file_handler::get_current_dir().as_str()));
 	let records = file_handler::scan_directory(path);
 
-	// pass those as a list of file records into the graph,
 	let mut graph = analyser::initialise_graph();
         graph.bulk_insert(records);
-
-        // evaluate the duplicates
         let final_res = graph.find_duplicates();
-
-        // find a better way of presenting the duplicates.
+	
 	display_result(&final_res);
+
     } else {
         println!("You need to either parse or generate, otherwise there is nothing to do.");
     }
