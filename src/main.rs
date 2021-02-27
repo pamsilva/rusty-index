@@ -11,6 +11,7 @@ use clap::{App, Arg, SubCommand};
 extern crate colored;
 use colored::*;
 
+
 mod index_db;
 use index_db::{IndexRecord, IndexStorage};
 
@@ -63,6 +64,7 @@ fn main() {
         .subcommand(SubCommand::with_name("generate"))
         .subcommand(SubCommand::with_name("virtual"))
         .subcommand(SubCommand::with_name("baby-steps").arg(Arg::with_name("path").takes_value(true).index(1)))
+        .subcommand(SubCommand::with_name("baby-steps-mem").arg(Arg::with_name("path").takes_value(true).index(1)))
         .get_matches();
 
     let file_name = String::from("index.db");
@@ -129,6 +131,17 @@ fn main() {
         let final_res = graph.find_duplicates();
 	
 	display_result(&final_res);
+
+    // } else if let Some(_matches) = config.subcommand_matches("baby-steps-mem") {
+    // 	let path = String::from(
+    // 	    _matches.value_of("path").unwrap_or(file_handler::get_current_dir().as_str()));
+    // 	let records = file_handler::scan_files_recursively(path);
+
+    // 	let mut graph = analyser::initialise_graph();
+    //     graph.bulk_insert(records);
+    //     let final_res = graph.find_duplicates();
+	
+    // 	display_result(&final_res);
 
     } else {
         println!("You need to either parse or generate, otherwise there is nothing to do.");

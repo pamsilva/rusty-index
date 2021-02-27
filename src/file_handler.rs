@@ -210,3 +210,4 @@ pub fn scan_directory(base_path: String) -> Vec<analyser::FileRecord> {
 
     results.concat()
 }
+

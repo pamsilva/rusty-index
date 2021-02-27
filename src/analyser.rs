@@ -231,6 +231,14 @@ impl GraphStorageInterface for GraphStorage {
 }
 
 
+
+pub trait PersistentGraph {
+    fn dummy(&self);
+    fn push_node(&self, node_entry: &FileRecord);
+    fn push_leaf(&self, node_entry: &FileRecord);
+}
+
+
 pub fn parallel_bulk_insert(shared_graph: Arc<Mutex<GraphStorage>>, node: &mut NodeIndex, sorted_entries: Vec<FileRecord>){
     let mut local_contents = HashMap::<String, Vec<FileRecord>>::new();
     
