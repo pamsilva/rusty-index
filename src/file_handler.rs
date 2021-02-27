@@ -2,7 +2,7 @@ use std::fs::{metadata, read_dir, File};
 use std::io::prelude::*;
 use std::io::{stdin, Result};
 use std::path::Component::{Normal, RootDir};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::env;
 use std::sync::mpsc::channel;
 use std::time::SystemTime;
@@ -211,3 +211,45 @@ pub fn scan_directory(base_path: String) -> Vec<analyser::FileRecord> {
     results.concat()
 }
 
+
+fn simple_process_directory(path:& Path) -> Vec<PathBuf> {
+    let str_path = match path.to_str() {
+	Some(s) => String::from(s),
+	None => panic!("Emptt path."),
+    };
+    let entries = match read_dir(path) {
+	Ok(x) => x,
+	Err(e) => panic!("Could not read directory {}: {}", str_path, e),
+    };
+
+    let mut results = Vec::new();
+    for entry in entries {
+	let sub_path = match entry {
+	    Ok(dir_entry) => dir_entry.path(),
+	    Err(e) => panic!("Cannot get path for entries under {}: {}", str_path, e),
+	};
+
+	if sub_path.is_dir() {
+	    results.push(simple_process_directory(&sub_path));
+	    
+	} else {
+            results.push(vec![PathBuf::from(sub_path)]);
+	}
+    }
+
+    results.concat()
+}
+
+
+pub fn simple_scan_directory(base_path: String) -> Vec<PathBuf> {
+    let path = Path::new(&base_path);
+    let mut results = Vec::new();
+    
+    if path.is_dir() {
+	results.push(simple_process_directory(&path));
+    } else {
+        results.push(vec![PathBuf::from(path)]);
+    }
+
+    results.concat()
+}

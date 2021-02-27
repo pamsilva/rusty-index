@@ -132,17 +132,13 @@ fn main() {
 	
 	display_result(&final_res);
 
-    // } else if let Some(_matches) = config.subcommand_matches("baby-steps-mem") {
-    // 	let path = String::from(
-    // 	    _matches.value_of("path").unwrap_or(file_handler::get_current_dir().as_str()));
-    // 	let records = file_handler::scan_files_recursively(path);
+    } else if let Some(_matches) = config.subcommand_matches("baby-steps-mem") {
+    	let path = String::from(
+    	    _matches.value_of("path").unwrap_or(file_handler::get_current_dir().as_str()));
+    	let records = file_handler::simple_scan_directory(path);
 
-    // 	let mut graph = analyser::initialise_graph();
-    //     graph.bulk_insert(records);
-    //     let final_res = graph.find_duplicates();
+	println!("the temporary results: {:#?}", records);
 	
-    // 	display_result(&final_res);
-
     } else {
         println!("You need to either parse or generate, otherwise there is nothing to do.");
     }
