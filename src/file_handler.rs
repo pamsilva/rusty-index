@@ -20,6 +20,7 @@ use crypto::digest::Digest;
 use crypto::md5::Md5;
 
 use crate::analyser;
+use crate::index_db;
 
 use crate::misc;
 use misc::get_name_and_split_path;
@@ -252,4 +253,58 @@ pub fn simple_scan_directory(base_path: String) -> Vec<PathBuf> {
     }
 
     results.concat()
+}
+
+
+
+pub fn path_to_file_record(file_list: Vec<PathBuf>) -> Vec<index_db::IndexRecord> {
+    let n_cpus = num_cpus::get();
+    let pool = ThreadPool::new(n_cpus);
+    println!("Running with {} threads ...", n_cpus);
+
+    let (tx, rx) = channel();
+
+    for file in file_list {
+        let tx = tx.clone();
+	
+        pool.execute(move || {
+            // println!("processing {:#?} ...", file);
+	    
+            let file_hash = hash_file(&file).unwrap();
+	    let file_name = file.file_name().expect("Could not get file name")
+		.to_str().expect("Could not transform file name into string");
+	    let path = file.parent().expect("Could not get path for")
+		.as_os_str().to_str().expect("Could not transform path into string");
+	    let metadata = match metadata(&file) {
+                Ok(m_tada) => m_tada,
+                Err(e) => panic!("Can't get metadata for file {:?}; {:?}", &file, e),
+            };
+            let timestamp = match metadata.modified() {
+                Ok(time) => time,
+                Err(_e) => SystemTime::now(),
+            };
+
+            let modified: DateTime<Utc> = timestamp.into();
+            let new_record = index_db::IndexRecord {
+		id: 0,
+                checksum: file_hash,
+                name: String::from(file_name),
+                path: String::from(path),
+                modified,
+            };
+	    println!("Processed new entry {:#?}", new_record);
+
+            tx.send(new_record).expect("Could not send data!");
+        })
+    }
+
+    println!("Finished spanning. Dropping connection ...");
+    drop(tx);
+
+    let mut records = Vec::<index_db::IndexRecord>::new();
+    for r in rx.iter() {
+        records.push(r);
+    }
+
+    return records;
 }

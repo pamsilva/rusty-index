@@ -136,8 +136,12 @@ fn main() {
     	let path = String::from(
     	    _matches.value_of("path").unwrap_or(file_handler::get_current_dir().as_str()));
     	let records = file_handler::simple_scan_directory(path);
-
-	println!("the temporary results: {:#?}", records);
+	let strage_records = file_handler::path_to_file_record(records);
+        println!("Saving {} into the database.", strage_records.len());
+        match data_source.insert(&strage_records) {
+            Ok(_) => println!("Records successfully inserted"),
+            Err(e) => println!("Error inserting records: {:?}", e),
+        };
 	
     } else {
         println!("You need to either parse or generate, otherwise there is nothing to do.");
