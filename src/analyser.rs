@@ -334,7 +334,7 @@ pub fn parallel_bulk_insert(shared_graph: Arc<Mutex<GraphStorage>>, node: &mut N
         checksum,
     }
     
-}
+} 
 
 
 pub fn create_shared_graph() -> Arc<Mutex<GraphStorage>> {
