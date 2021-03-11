@@ -11,6 +11,8 @@ use clap::{App, Arg, SubCommand};
 extern crate colored;
 use colored::*;
 
+extern crate serde_json;
+use serde_json::Result;
 
 mod index_db;
 use index_db::{IndexRecord, IndexStorage};
@@ -20,6 +22,9 @@ use analyser::{FileRecord, GraphStorageInterface};
 
 mod file_handler;
 use file_handler::load_and_process_files;
+
+mod graph_storage;
+use graph_storage::mock_process_base_dir;
 
 mod misc;
 use misc::to_file_record;
@@ -58,6 +63,17 @@ fn display_result(duplicates: &HashMap<String, Vec<String>>) {
 }
 
 
+fn export_result(duplicates: &HashMap<String, Vec<String>>) {
+    let file_name = "duplicate-results.json";
+    println!("{}{}", "Exporting the results to  :".green().bold(), file_name.blue().bold());
+    println!("");
+
+    let json_data = serde_json::to_string(duplicates).expect("Error serialising duplicate_results to JSON");
+    let mut file = std::fs::File::create(file_name).expect("Couldn't not open file to save result.");
+    file.write(json_data.as_bytes()).expect("Could not write result into file");
+}
+
+
 fn main() {
     let config = App::new("rusty-index")
         .subcommand(SubCommand::with_name("parse"))
@@ -88,17 +104,28 @@ fn main() {
 
     } else if let Some(_matches) = config.subcommand_matches("generate") {
         let res = data_source.fetch_sorted().unwrap();
-        let mut graph = analyser::initialise_graph();
 
         let file_records_res: Vec<FileRecord> =
             res.into_iter().map(|x| to_file_record(&x)).collect();
         println!("Processing {} from the database.", file_records_res.len());
 
+	let mut graph = analyser::initialise_graph();
         graph.bulk_insert(file_records_res);
         export_graph(&graph);
 
+        // let graph_ref = analyser::create_shared_graph();
+        // let local_ref = graph_ref.clone();
+        // let mut root = local_ref.lock().unwrap().root;
+
+        // let first_ref = graph_ref.clone();
+        // analyser::parallel_bulk_insert(first_ref, &mut root, file_records_res);
+        // let graph = local_ref.lock().unwrap();
+
+        export_graph(&graph);
+	
         let final_res = graph.find_duplicates();
 	display_result(&final_res);
+	export_result(&final_res);
 
     } else if let Some(_matches) = config.subcommand_matches("virtual") {
         let records = load_and_process_files();
@@ -124,19 +151,15 @@ fn main() {
     } else if let Some(_matches) = config.subcommand_matches("baby-steps") {
 	let path = String::from(
 	    _matches.value_of("path").unwrap_or(file_handler::get_current_dir().as_str()));
-	let records = file_handler::scan_directory(path);
-
-	let mut graph = analyser::initialise_graph();
-        graph.bulk_insert(records);
-        let final_res = graph.find_duplicates();
-	
-	display_result(&final_res);
-
+	mock_process_base_dir(path);
     } else if let Some(_matches) = config.subcommand_matches("baby-steps-mem") {
     	let path = String::from(
     	    _matches.value_of("path").unwrap_or(file_handler::get_current_dir().as_str()));
     	let records = file_handler::simple_scan_directory(path);
+	
+	println!("Processing {} files.", records.len());
 	let strage_records = file_handler::path_to_file_record(records);
+
         println!("Saving {} into the database.", strage_records.len());
         match data_source.insert(&strage_records) {
             Ok(_) => println!("Records successfully inserted"),

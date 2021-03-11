@@ -164,7 +164,6 @@ impl GraphStorageInterface for GraphStorage {
             name: node_name.to_string(),
             checksum
         }
-
     }
 
     fn bulk_insert(&mut self, sorted_entries: Vec<FileRecord>) {
@@ -228,14 +227,6 @@ impl GraphStorageInterface for GraphStorage {
 
         return duplicates.into_iter().filter(|(_, v)| v.len() > 1).collect();
     }
-}
-
-
-
-pub trait PersistentGraph {
-    fn dummy(&self);
-    fn push_node(&self, node_entry: &FileRecord);
-    fn push_leaf(&self, node_entry: &FileRecord);
 }
 
 

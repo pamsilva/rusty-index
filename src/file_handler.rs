@@ -35,7 +35,7 @@ pub fn get_current_dir() -> String {
 }
 
 
-fn hash_file<T: AsRef<Path>>(file_path: &T) -> Result<String> {
+pub fn hash_file<T: AsRef<Path>>(file_path: &T) -> Result<String> {
     let mut file = File::open(&file_path)?;
 
     let mut hasher = Md5::new();
@@ -292,7 +292,7 @@ pub fn path_to_file_record(file_list: Vec<PathBuf>) -> Vec<index_db::IndexRecord
                 path: String::from(path),
                 modified,
             };
-	    println!("Processed new entry {:#?}", new_record);
+	    // println!("Processed new entry {:#?}", new_record);
 
             tx.send(new_record).expect("Could not send data!");
         })
